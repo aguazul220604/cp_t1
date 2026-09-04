@@ -1,0 +1,246 @@
+/* ==========================================
+   VARIABLES Y TOKENS DE DISEÑO
+   ========================================== */
+:root {
+  --bg-main: #0b313f;
+  --bg-panel: #cef5ed;
+  --bg-white: #ffffff;
+  --text-dark: #1a3644;
+  --btn-teal: #248e98;
+  --btn-teal-active: #17656d;
+  --btn-yellow: #ffde00;
+  --btn-orange: #f37021;
+  --radius-panel: 20px;
+  --radius-btn: 25px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+body,
+.app-container {
+  background-color: var(--bg-main);
+  min-height: 100vh;
+  padding: 20px 40px;
+  color: #ffffff;
+}
+
+/* ==========================================
+   ENCABEZADO
+   ========================================== */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.logo-img {
+  width: 45px;
+  height: 45px;
+  object-fit: contain;
+}
+
+.subtitle {
+  display: block;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* ==========================================
+   ESTRUCTURA DE 3 COLUMNAS
+   ========================================== */
+.cleaning-grid {
+  display: grid;
+  grid-template-columns: 250px 1fr 220px;
+  gap: 20px;
+  align-items: start;
+}
+
+.card-panel {
+  background-color: var(--bg-panel);
+  border-radius: var(--radius-panel);
+  padding: 25px 20px;
+  color: var(--text-dark);
+  min-height: 500px;
+}
+
+/* ==========================================
+   COLUMNA IZQUIERDA 
+   ========================================== */
+.instance-group {
+  margin-bottom: 25px;
+}
+
+.instance-name {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--text-dark);
+}
+
+.btn-project {
+  width: 100%;
+  background-color: var(--btn-teal);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-btn);
+  padding: 10px 15px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.btn-project:hover {
+  background-color: var(--btn-teal-active);
+}
+
+.btn-project.active {
+  background-color: var(--btn-teal-active);
+}
+
+/* ==========================================
+   COLUMNA CENTRAL 
+   ========================================== */
+.project-header {
+  background-color: var(--bg-white);
+  padding: 15px 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.project-header h3 {
+  font-size: 14px;
+  color: var(--text-dark);
+  margin-bottom: 2px;
+}
+
+.project-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.project-dashboard {
+  background-color: var(--bg-white);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.charts-container {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.chart-box {
+  flex: 1;
+  min-height: 200px;
+  position: relative;
+}
+
+.metrics-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #eeeeee;
+  padding-bottom: 5px;
+}
+
+.action-center {
+  text-align: center;
+}
+
+.btn-warning {
+  background-color: var(--btn-yellow);
+  color: #000000;
+  border: none;
+  padding: 10px 25px;
+  border-radius: var(--radius-btn);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* =========================================
+   COLUMNA DERECHA
+   ========================================== */
+.panel-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.preserved-item {
+  background-color: var(--btn-teal-active);
+  color: #ffffff;
+  border-radius: 15px;
+  padding: 15px;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.preserved-info {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.preserved-info span {
+  display: block;
+}
+
+.btn-revertir {
+  background-color: var(--btn-orange);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-btn);
+  padding: 6px 20px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ==========================================
+   BOTÓN GLOBAL Y MODALES
+   ========================================== */
+.global-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.btn-large {
+  background-color: var(--btn-yellow);
+  color: #000000;
+  border: none;
+  border-radius: 30px;
+  padding: 15px 40px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hidden {
+  display: none !important;
+}
