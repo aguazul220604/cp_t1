@@ -1,88 +1,255 @@
-/* Variables Globales / Tokens de Diseño */
+/* ==========================================
+   1. VARIABLES Y TOKENS DE DISEÑO
+   ========================================== */
 :root {
-  --bg-main: #0b2b38; /* Azul oscuro de fondo principal */
-  --card-bg: #ffffff; /* Blanco de tarjetas */
-  --primary-color: #03212e; /* Botones principales / Navbar */
-  --primary-hover: #084058;
-  --accent-blue: #e1f8fe; /* Fondo de los inputs */
-  --text-main: #333333;
-  --danger-red: #e02b2b;
-  --border-radius-card: 16px;
-  --border-radius-input: 20px;
+  --bg-dark: #0a323f;
+  --bg-card: #ffffff;
+  --bg-input: #cff3fa;
+  --text-dark: #0a323f;
+  --text-muted: #66828c;
+  --btn-dark: #0a222c;
+  --btn-blue: #0066ff;
+  --btn-red: #ff0000;
+  --radius-card: 24px;
+  --radius-input: 20px;
+  --radius-btn: 20px;
 }
 
-/* Layout General (Frame 1) */
-body {
-  background-color: var(--bg-main);
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  margin: 0;
-  padding: 20px;
-  color: var(--text-main);
-}
-
-.header-title {
-  color: #ffffff;
-  margin-bottom: 24px;
-}
-
-.dashboard-container {
-  display: flex;
-  gap: 24px;
-  justify-content: center;
-}
-
-/* Tarjetas Reutilizables (Registro y Tabla) */
-.card {
-  background-color: var(--card-bg);
-  border-radius: var(--border-radius-card);
-  padding: 30px;
-  flex: 1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* Form Inputs */
-.form-input {
-  width: 100%;
-  background-color: var(--accent-blue);
-  border: none;
-  border-radius: var(--border-radius-input);
-  padding: 12px 16px;
-  margin-top: 6px;
-  margin-bottom: 16px;
+/* Base global */
+* {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
 }
 
-/* Botones Reutilizables */
-.btn-main {
-  background-color: var(--primary-color);
-  color: white;
+body,
+.app-container {
+  background-color: var(--bg-dark);
+  min-height: 100vh;
+  padding: 30px 50px;
+  color: #ffffff;
+}
+
+/* ==========================================
+   2. ENCABEZADO
+   ========================================== */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 35px;
+}
+
+.logo-img {
+  width: 45px;
+  height: 45px;
+  object-fit: contain;
+}
+
+.subtitle {
+  display: block;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 400;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* ==========================================
+   3. GRID Y TARJETAS (CONTENEDORES BLANCOS)
+   ========================================== */
+.dashboard-grid {
+  display: flex;
+  gap: 30px;
+  align-items: stretch;
+}
+
+.card-panel {
+  background-color: var(--bg-card);
+  border-radius: var(--radius-card);
+  padding: 40px 35px;
+  flex: 1;
+  color: var(--text-dark);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.card-title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 30px;
+}
+
+/* ==========================================
+   4. FORMULARIO E INPUTS
+   ========================================== */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 6px;
+}
+
+.form-control {
+  width: 100%;
+  background-color: var(--bg-input);
   border: none;
-  border-radius: 20px;
-  padding: 10px 24px;
-  cursor: pointer;
-  font-weight: bold;
+  outline: none;
+  height: 42px;
+  border-radius: var(--radius-input);
+  padding: 0 18px;
+  font-size: 14px;
+  color: var(--text-dark);
 }
 
-/* Modales Reutilizables (Frames 2 a 10) */
+.form-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 35px;
+}
+
+.btn-primary {
+  background-color: var(--btn-dark);
+  color: #ffffff;
+  border: none;
+  padding: 12px 45px;
+  border-radius: var(--radius-btn);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+/* ==========================================
+   5. TABLA ESTILIZADA
+   ========================================== */
+.table-container {
+  border: 1.5px solid var(--btn-dark);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table thead {
+  background-color: var(--btn-dark);
+  color: #ffffff;
+}
+
+.data-table th {
+  padding: 12px 15px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.data-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.text-center {
+  text-align: center !important;
+}
+
+/* Botones de Acción dentro de la Tabla */
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+}
+
+.btn-action {
+  width: 90px;
+  padding: 4px 0;
+  border: none;
+  border-radius: var(--radius-btn);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn-edit {
+  background-color: var(--btn-blue);
+}
+
+.btn-delete {
+  background-color: var(--btn-red);
+}
+
+/* ==========================================
+   6. MODALES Y CAPAS SUPERPUESTAS
+   ========================================== */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
 }
 
 .modal-content {
-  background: white;
-  padding: 30px;
-  border-radius: var(--border-radius-card);
+  background-color: #ffffff;
+  border-radius: var(--radius-card);
+  padding: 30px 40px;
+  width: 400px;
+  color: var(--text-dark);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.modal-content h3 {
   text-align: center;
-  min-width: 320px;
+  margin-bottom: 20px;
+  font-size: 18px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 25px;
+  gap: 10px;
+}
+
+.btn-secondary {
+  background-color: var(--text-muted);
+  color: #ffffff;
+  border: none;
+  padding: 10px 25px;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .hidden {
