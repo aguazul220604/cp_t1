@@ -1,0 +1,131 @@
+<div class="app-container">
+  <!-- ENCABEZADO / NAVBAR -->
+  <header class="app-header">
+    <div class="header-logo">
+      <img id="mi-imagen-dinamica" alt="Banamex Logo" class="logo-img" />
+    </div>
+    <div class="header-titles">
+      <span class="subtitle"
+        >Banamex | Cognitive Services and Machine Learning Core of
+        Excellence</span
+      >
+      <h1 class="title">Gestión de Limpieza de Proyectos Dataiku</h1>
+    </div>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="dashboard-grid">
+    <!-- SECCIÓN IZQUIERDA: FORMULARIO -->
+    <section class="card-panel">
+      <h2 class="card-title">Registro de Instancias</h2>
+
+      <form id="form-registro" autocomplete="off">
+        <div class="form-group">
+          <label for="nombre-instancia">Nombre de Instancia</label>
+          <input
+            type="text"
+            id="nombre-instancia"
+            class="form-control"
+            placeholder=""
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="url-instancia">URL de Instancia</label>
+          <input
+            type="text"
+            id="url-instancia"
+            class="form-control"
+            placeholder=""
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="api-key">Global API Key</label>
+          <input
+            type="password"
+            id="api-key"
+            class="form-control"
+            placeholder=""
+            required
+          />
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="btn-registrar" class="btn btn-primary">
+            Registrar
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- SECCIÓN DERECHA: TABLA DE DATOS -->
+    <section class="card-panel">
+      <h2 class="card-title">Instancias registradas</h2>
+
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>URL</th>
+              <th class="text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-instancias-body">
+            <!-- Ejemplo de fila renderizada -->
+            <tr>
+              <td>DEV</td>
+              <td>HTTPS://JJJJHB</td>
+              <td class="text-center">
+                <div class="action-buttons">
+                  <button class="btn btn-action btn-edit" data-id="1">
+                    Editar
+                  </button>
+                  <button class="btn btn-action btn-delete" data-id="1">
+                    Eliminar
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- MODAL EDITAR INSTANCIA -->
+<div id="modal-editar" class="modal-overlay hidden">
+  <div class="modal-content">
+    <h3>Editar Registro de Instancia</h3>
+
+    <input type="hidden" id="edit-id" />
+
+    <div class="form-group">
+      <label for="edit-nombre">Nombre actual</label>
+      <input type="text" id="edit-nombre" class="form-control" />
+    </div>
+
+    <div class="form-group">
+      <label for="edit-url">URL actual</label>
+      <input type="text" id="edit-url" class="form-control" />
+    </div>
+
+    <div class="form-group">
+      <label for="edit-api-key">Global API Key actual</label>
+      <input type="password" id="edit-api-key" class="form-control" />
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" id="btn-guardar-edicion" class="btn btn-primary">
+        Confirmar
+      </button>
+      <button type="button" id="btn-cancelar-edicion" class="btn btn-secondary">
+        Cancelar
+      </button>
+    </div>
+  </div>
+</div>
