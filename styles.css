@@ -1,0 +1,90 @@
+/* Variables Globales / Tokens de Diseño */
+:root {
+  --bg-main: #0b2b38; /* Azul oscuro de fondo principal */
+  --card-bg: #ffffff; /* Blanco de tarjetas */
+  --primary-color: #03212e; /* Botones principales / Navbar */
+  --primary-hover: #084058;
+  --accent-blue: #e1f8fe; /* Fondo de los inputs */
+  --text-main: #333333;
+  --danger-red: #e02b2b;
+  --border-radius-card: 16px;
+  --border-radius-input: 20px;
+}
+
+/* Layout General (Frame 1) */
+body {
+  background-color: var(--bg-main);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 20px;
+  color: var(--text-main);
+}
+
+.header-title {
+  color: #ffffff;
+  margin-bottom: 24px;
+}
+
+.dashboard-container {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+}
+
+/* Tarjetas Reutilizables (Registro y Tabla) */
+.card {
+  background-color: var(--card-bg);
+  border-radius: var(--border-radius-card);
+  padding: 30px;
+  flex: 1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Form Inputs */
+.form-input {
+  width: 100%;
+  background-color: var(--accent-blue);
+  border: none;
+  border-radius: var(--border-radius-input);
+  padding: 12px 16px;
+  margin-top: 6px;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+
+/* Botones Reutilizables */
+.btn-main {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  padding: 10px 24px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+/* Modales Reutilizables (Frames 2 a 10) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  padding: 30px;
+  border-radius: var(--border-radius-card);
+  text-align: center;
+  min-width: 320px;
+}
+
+.hidden {
+  display: none !important;
+}
