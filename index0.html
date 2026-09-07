@@ -100,7 +100,7 @@
        ========================================== -->
   <div id="view-analisis" class="view-section hidden">
     <main class="analysis-grid">
-      <!-- Columna 1: Lista de Instancias y Proyectos (ID AGREGADO AQUI) -->
+      <!-- Columna 1: Lista de Instancias y Proyectos -->
       <aside id="sidebar-projects" class="sidebar-projects scrollable-panel">
         <!-- Se llena dinámicamente desde JS con renderizarPanelIzquierdo() -->
       </aside>
@@ -135,11 +135,8 @@
           </ul>
 
           <!-- Botón Preservar dentro del Panel Central -->
-          <button
-            id="btn-preservar-centro"
-            class="btn btn-success mt-3 hidden"
-            onclick="preservarProyectoActual()"
-          >
+          <!-- El evento click se maneja por delegación en registrarEventos() -->
+          <button id="btn-preservar-centro" class="btn btn-success mt-3 hidden">
             🛡️ Preservar Proyecto
           </button>
         </div>
@@ -157,12 +154,9 @@
     </main>
 
     <!-- Botón flotante inferior -->
+    <!-- El evento click se maneja por delegación en registrarEventos() -->
     <div class="action-bar text-end p-3">
-      <button
-        id="btn-autorizar-cambios"
-        class="btn btn-danger btn-lg"
-        onclick="ejecutarLimpiezaCompleta()"
-      >
+      <button id="btn-autorizar-cambios" class="btn btn-danger btn-lg">
         Conservar cambios y autorizar
       </button>
     </div>

@@ -1,10 +1,5 @@
-// ==========================================
-// VARIABLES GLOBALES
-// ==========================================
+// Variable global para almacenar el listado en memoria
 let listaInstancias = [];
-let todosLosProyectosInactivos = []; // Proyectos devueltos por el backend
-let proyectosPreservados = []; // [{ instancia_id, proyecto_id, nombre_proyecto, nombre_instancia }]
-let proyectoSeleccionadoActual = null;
 
 // ==========================================
 // 1. INICIALIZACIÓN
@@ -16,7 +11,7 @@ $(document).ready(function () {
 });
 
 // ==========================================
-// 2. REGISTRO DE EVENTOS
+// 2. REGISTRO DE EVENTOS (TODO EN UN SOLO LUGAR)
 // ==========================================
 function registrarEventos() {
   // Guardar nueva instancia desde el formulario principal
@@ -73,6 +68,38 @@ function registrarEventos() {
       cargarProyectosInactivos();
     }
   });
+
+  // ---- Selección de proyecto en la vista de análisis ----
+  // Delegado sobre document porque .btn-project se crea dinámicamente
+  $(document).on("click", ".btn-project", function () {
+    // Resaltar el botón activo
+    $(".btn-project").removeClass("active");
+    $(this).addClass("active");
+
+    const idInstancia = $(this).data("instancia");
+    const idProyecto = $(this).data("proyecto");
+    const nombreProyecto = $(this).text().trim();
+
+    consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto);
+  });
+
+  // ---- Preservar el proyecto actualmente seleccionado ----
+  // (El botón vive dentro del panel central; usamos delegación por si el panel se re-renderiza)
+  $(document).on("click", "#btn-preservar-centro", function () {
+    preservarProyectoActual();
+  });
+
+  // ---- Revertir un proyecto preservado (botón dinámico en el panel derecho) ----
+  $(document).on("click", ".btn-revertir", function () {
+    const idInstancia = $(this).data("instancia");
+    const idProyecto = $(this).data("proyecto");
+    revertirProyecto(idInstancia, idProyecto);
+  });
+
+  // ---- Ejecutar limpieza completa (botón flotante inferior) ----
+  $(document).on("click", "#btn-autorizar-cambios", function () {
+    ejecutarLimpiezaCompleta();
+  });
 }
 
 // ==========================================
@@ -104,6 +131,7 @@ function guardarInstancia() {
   const url = $("#url-instancia").val().trim();
   const apiKey = $("#api-key").val().trim();
 
+  // Validación básica del formulario (Frame 3)
   if (!nombre || !url || !apiKey) {
     alert("Usted no ha completado todos los campos del formulario");
     return;
@@ -219,6 +247,7 @@ function cargarImagenLogo() {
     type: "GET",
     success: function (response) {
       if (response.status === "ok") {
+        // Asigna la cadena Base64 al atributo src de tu etiqueta img en el HTML
         $("#mi-imagen-dinamica").attr(
           "src",
           "data:image/png;base64," + response.data,
@@ -271,129 +300,175 @@ function limpiarFormulario() {
 }
 
 // ==========================================
-// 9. LÓGICA DE LA VISTA 2 (ANÁLISIS DE PROYECTOS Y LIMPIEZA)
+// 9. LÓGICA DE LA VISTA 2 (ANÁLISIS DE PROYECTOS)
 // ==========================================
 
-// 9.1 CARGAR PROYECTOS DESDE EL BACKEND
+// Estado en memoria de todos los proyectos inactivos cargados, con su estado de preservación
+let estadoProyectos = [];
+// Proyecto actualmente seleccionado en el dashboard central
+let proyectoSeleccionadoActual = null;
+
+// Carga la lista de instancias y sus proyectos inactivos en la barra lateral izquierda
 function cargarProyectosInactivos() {
-  $("#sidebar-projects").html(
-    '<p class="text-center text-muted">Cargando proyectos inactivos...</p>',
-  );
+  const sidebar = $("#sidebar-projects");
+  sidebar
+    .empty()
+    .append('<p class="text-center">Consultando proyectos en Dataiku...</p>');
 
   $.ajax({
     url: getWebAppBackendUrl("/obtener-proyectos-inactivos"),
     type: "GET",
     success: function (response) {
       if (response.status === "ok") {
-        todosLosProyectosInactivos = response.datos || [];
-        renderizarPaneles();
+        // Reconstruir el estado plano de proyectos a partir de la respuesta del backend
+        estadoProyectos = [];
+        (response.datos || []).forEach(function (instancia) {
+          instancia.proyectos.forEach(function (proyecto) {
+            estadoProyectos.push({
+              id_instancia: instancia.id_instancia,
+              nombre_instancia: instancia.nombre_instancia,
+              id_proyecto: proyecto.id_proyecto,
+              nombre_proyecto: proyecto.nombre_proyecto,
+              preservado: false,
+            });
+          });
+        });
+
+        proyectoSeleccionadoActual = null;
+        resetearDashboardCentral();
+        renderizarPanelIzquierdo();
+        renderizarPanelPreservados();
       } else {
-        $("#sidebar-projects").html(
-          `<p class="text-center text-danger">Error al obtener proyectos: ${response.message}</p>`,
-        );
+        sidebar
+          .empty()
+          .append(
+            `<p class="text-center text-red">Error: ${response.message}</p>`,
+          );
       }
     },
     error: function (err) {
       console.error("Error al obtener proyectos:", err);
-      $("#sidebar-projects").html(
-        '<p class="text-center text-danger">Error de conexión.</p>',
-      );
+      sidebar
+        .empty()
+        .append('<p class="text-center">Ocurrió un error de conexión.</p>');
     },
   });
 }
 
-// 9.2 RENDERIZAR PANEL IZQUIERDO Y DERECHO
-function renderizarPaneles() {
-  renderizarPanelIzquierdo();
-  renderizarPanelDerecho();
-}
-
-// Panel Izquierdo: Muestra solo los proyectos que NO han sido preservados
+// Renderiza el panel izquierdo (proyectos AÚN NO preservados), agrupados por instancia
 function renderizarPanelIzquierdo() {
-  const container = $("#sidebar-projects");
-  container.empty();
+  const sidebar = $("#sidebar-projects");
+  sidebar.empty();
 
-  if (todosLosProyectosInactivos.length === 0) {
-    container.html(
-      '<p class="text-center text-muted">No se encontraron proyectos inactivos (>4 meses).</p>',
+  const activos = estadoProyectos.filter((p) => !p.preservado);
+
+  if (activos.length === 0) {
+    sidebar.append(
+      '<p class="text-center">No hay proyectos pendientes de revisión.</p>',
     );
     return;
   }
 
-  todosLosProyectosInactivos.forEach((instancia) => {
-    // Filtrar proyectos que NO estén en la lista de preservados
-    const proyectosSinPreservar = instancia.proyectos.filter(
-      (p) =>
-        !proyectosPreservados.some(
-          (pres) =>
-            pres.instancia_id === instancia.id_instancia &&
-            pres.proyecto_id === p.id_proyecto,
-        ),
-    );
+  // Agrupar por instancia
+  const instanciasMap = {};
+  activos.forEach((p) => {
+    if (!instanciasMap[p.id_instancia]) {
+      instanciasMap[p.id_instancia] = {
+        nombre_instancia: p.nombre_instancia,
+        proyectos: [],
+      };
+    }
+    instanciasMap[p.id_instancia].proyectos.push(p);
+  });
 
-    let htmlGroup = `
-      <div class="instance-group mb-3 card-panel">
-        <h5 class="instance-title" style="font-size:13px; font-weight:bold; color:#178096;">
-          ⚙️ ${instancia.nombre_instancia} (${proyectosSinPreservar.length})
-        </h5>
-        <div class="list-group projects-list">
+  Object.keys(instanciasMap).forEach(function (idInstancia) {
+    const grupo = instanciasMap[idInstancia];
+    let grupoHTML = `
+      <div class="instance-group card-panel">
+        <h3>Instancia ${grupo.nombre_instancia}</h3>
+        <div class="projects-list">
     `;
 
-    if (proyectosSinPreservar.length === 0) {
-      htmlGroup += `<p class="text-muted small ps-2">Todos los proyectos preservados</p>`;
-    } else {
-      proyectosSinPreservar.forEach((p) => {
-        const esSeleccionado =
-          proyectoSeleccionadoActual &&
-          proyectoSeleccionadoActual.instancia_id === instancia.id_instancia &&
-          proyectoSeleccionadoActual.proyecto_id === p.id_proyecto;
+    grupo.proyectos.forEach(function (proyecto) {
+      const esActivo =
+        proyectoSeleccionadoActual &&
+        proyectoSeleccionadoActual.id_instancia == idInstancia &&
+        proyectoSeleccionadoActual.id_proyecto == proyecto.id_proyecto
+          ? "active"
+          : "";
+      grupoHTML += `
+        <button class="btn-project ${esActivo}"
+                data-instancia="${idInstancia}"
+                data-proyecto="${proyecto.id_proyecto}">
+          ${proyecto.nombre_proyecto}
+        </button>
+      `;
+    });
 
-        htmlGroup += `
-          <button class="list-group-item list-group-item-action project-pill btn-project ${esSeleccionado ? "active" : ""}" 
-                  onclick="seleccionarProyecto(${instancia.id_instancia}, '${p.id_proyecto}', '${p.nombre_proyecto}', '${instancia.nombre_instancia}')">
-            <span>${p.nombre_proyecto}</span>
-            <small class="d-block text-muted" style="font-size:10px;">${p.id_proyecto}</small>
-          </button>
-        `;
-      });
-    }
-
-    htmlGroup += `</div></div>`;
-    container.append(htmlGroup);
+    grupoHTML += `</div></div>`;
+    sidebar.append(grupoHTML);
   });
 }
 
-// 9.3 SELECCIONAR PROYECTO PARA ANALIZAR
-function seleccionarProyecto(
-  idInstancia,
-  idProyecto,
-  nombreProyecto,
-  nombreInstancia,
-) {
-  proyectoSeleccionadoActual = {
-    instancia_id: idInstancia,
-    proyecto_id: idProyecto,
-    nombre_proyecto: nombreProyecto,
-    nombre_instancia: nombreInstancia,
-  };
+// Renderiza el panel derecho (proyectos preservados) con su botón de revertir
+function renderizarPanelPreservados() {
+  const contenedor = $("#lista-preservados");
+  contenedor.empty();
 
-  renderizarPanelIzquierdo(); // Refrescar estado activo en la lista
+  const preservados = estadoProyectos.filter((p) => p.preservado);
 
-  $("#btn-preservar-centro").removeClass("hidden"); // Mostrar botón de preservar
+  if (preservados.length === 0) {
+    contenedor.append(
+      '<p class="text-center">Aún no hay proyectos preservados.</p>',
+    );
+    return;
+  }
 
-  consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto);
+  preservados.forEach(function (p) {
+    const fila = `
+      <div class="preserved-item">
+        <div class="preserved-item-info">
+          <strong>${p.nombre_proyecto}</strong>
+          <span class="preserved-item-instancia">${p.nombre_instancia}</span>
+        </div>
+        <button class="btn btn-action btn-revertir"
+                data-instancia="${p.id_instancia}"
+                data-proyecto="${p.id_proyecto}">
+          ↩️ Revertir
+        </button>
+      </div>
+    `;
+    contenedor.append(fila);
+  });
 }
 
-// 9.4 CONSULTAR MÉTRICAS DEL PROYECTO
-function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
-  $("#titulo-proyecto-seleccionado").text(nombreProyecto);
+// Resetea el panel central (sin selección, o tras preservar el proyecto actual)
+function resetearDashboardCentral() {
+  $("#titulo-proyecto-seleccionado").text("Seleccione un proyecto");
+  $("#css-charts-wrapper").addClass("hidden");
+  $("#mensaje-grafica-vacia")
+    .removeClass("hidden")
+    .text("Esperando selección...");
+  $(
+    "#metric-jobs, #metric-datasets, #metric-scenarios, #metric-last-mod, #metric-users",
+  ).text("-");
+  $("#btn-preservar-centro").addClass("hidden");
+}
 
-  // Mostrar mensaje de carga
+function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
+  proyectoSeleccionadoActual = {
+    id_instancia: idInstancia,
+    id_proyecto: idProyecto,
+    nombre_proyecto: nombreProyecto,
+  };
+
+  $("#titulo-proyecto-seleccionado").text(nombreProyecto);
+  $("#btn-preservar-centro").removeClass("hidden");
+
   $("#css-charts-wrapper").addClass("hidden");
   $("#mensaje-grafica-vacia")
     .removeClass("hidden")
     .text("Calculando métricas...");
-
   $(
     "#metric-jobs, #metric-datasets, #metric-scenarios, #metric-last-mod, #metric-users",
   ).text("...");
@@ -409,11 +484,7 @@ function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
       if (response.status === "ok") {
         $("#mensaje-grafica-vacia").addClass("hidden");
         $("#css-charts-wrapper").removeClass("hidden");
-
-        // DIBUJAR GRÁFICAS CSS
         renderizarGraficasCSS(response.datos_graficas);
-
-        // ACTUALIZAR MÉTRICAS DE TEXTO
         const m = response.metricas;
         $("#metric-jobs").text(m.jobs_ejecutados);
         $("#metric-datasets").text(m.total_datasets);
@@ -434,13 +505,12 @@ function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
   });
 }
 
-// Función auxiliar para dibujar las barras
+// Función auxiliar para dibujar las barras (sin cambios)
 function renderizarGraficasCSS(datosGraficas) {
-  // Gráfica Vertical (Tendencia)
   const vContainer = $("#chart-vertical");
   vContainer.empty();
   const vData = datosGraficas.tendencia;
-  const vMax = Math.max(...vData.valores, 1); // Evitar división por cero
+  const vMax = Math.max(...vData.valores, 1);
 
   vData.valores.forEach((val, i) => {
     const heightPct = (val / vMax) * 100;
@@ -452,14 +522,13 @@ function renderizarGraficasCSS(datosGraficas) {
     `);
   });
 
-  // Gráfica Horizontal (Estructura)
   const hContainer = $("#chart-horizontal");
   hContainer.empty();
   const hData = datosGraficas.estructura;
   const hMax = Math.max(...hData.valores, 1);
 
   hData.valores.forEach((val, i) => {
-    const widthPct = (val / hMax) * 80; // 80% máximo para dejar espacio al número
+    const widthPct = (val / hMax) * 80;
     hContainer.append(`
       <div class="h-bar-container">
         <div class="h-label">${hData.etiquetas[i]}</div>
@@ -470,110 +539,63 @@ function renderizarGraficasCSS(datosGraficas) {
   });
 }
 
-// 9.5 ACCIÓN: PRESERVAR PROYECTO (PANEL CENTRAL -> DERECHO)
+// ==========================================
+// 10. PRESERVAR / REVERTIR / EJECUTAR LIMPIEZA
+// ==========================================
+
+// Mueve el proyecto actualmente seleccionado del panel izquierdo al panel de preservados
 function preservarProyectoActual() {
   if (!proyectoSeleccionadoActual) return;
 
-  const yaExiste = proyectosPreservados.some(
+  const proyecto = estadoProyectos.find(
     (p) =>
-      p.instancia_id === proyectoSeleccionadoActual.instancia_id &&
-      p.proyecto_id === proyectoSeleccionadoActual.proyecto_id,
+      p.id_instancia == proyectoSeleccionadoActual.id_instancia &&
+      p.id_proyecto == proyectoSeleccionadoActual.id_proyecto,
   );
+  if (!proyecto) return;
 
-  if (!yaExiste) {
-    proyectosPreservados.push({ ...proyectoSeleccionadoActual });
-  }
-
-  // Limpiar panel central
-  $("#btn-preservar-centro").addClass("hidden");
-  $("#titulo-proyecto-seleccionado").text("Selecciona un proyecto");
-  $("#css-charts-wrapper").addClass("hidden");
-  $("#mensaje-grafica-vacia")
-    .removeClass("hidden")
-    .text("Proyecto preservado exitosamente.");
-
-  // Limpiar contadores de métricas
-  $(
-    "#metric-jobs, #metric-datasets, #metric-scenarios, #metric-last-mod, #metric-users",
-  ).text("0");
-
+  proyecto.preservado = true;
   proyectoSeleccionadoActual = null;
-  renderizarPaneles();
+
+  renderizarPanelIzquierdo();
+  renderizarPanelPreservados();
+  resetearDashboardCentral();
 }
 
-// Panel Derecho: Muestra proyectos preservados con su botón de revertir
-function renderizarPanelDerecho() {
-  const container = $("#lista-preservados");
-  container.empty();
+// Devuelve un proyecto preservado al panel izquierdo
+function revertirProyecto(idInstancia, idProyecto) {
+  const proyecto = estadoProyectos.find(
+    (p) => p.id_instancia == idInstancia && p.id_proyecto == idProyecto,
+  );
+  if (!proyecto) return;
 
-  if (proyectosPreservados.length === 0) {
-    container.html(
-      '<p class="text-center text-muted small mt-3">No hay proyectos preservados.</p>',
-    );
-    return;
-  }
+  proyecto.preservado = false;
 
-  proyectosPreservados.forEach((p, idx) => {
-    container.append(`
-      <div class="item-preservado-card p-2 mb-2 border rounded background-light d-flex justify-content-between align-items-center">
-        <div>
-          <strong style="font-size:12px; display:block;">${p.nombre_proyecto}</strong>
-          <small class="text-muted" style="font-size:10px;">${p.nombre_instancia} | ${p.proyecto_id}</small>
-        </div>
-        <button class="btn btn-sm btn-outline-warning" onclick="revertirProyecto(${idx})" title="Regresar a lista de limpieza">
-          ↩️
-        </button>
-      </div>
-    `);
-  });
+  renderizarPanelIzquierdo();
+  renderizarPanelPreservados();
 }
 
-// 9.6 ACCIÓN: REVERTIR PROYECTO (PANEL DERECHO -> IZQUIERDO)
-function revertirProyecto(index) {
-  proyectosPreservados.splice(index, 1);
-  renderizarPaneles();
-}
-
-// 9.7 ACCIÓN: CONSERVAR CAMBIOS Y AUTORIZAR (EJECUTAR LIMPIEZA)
+// Envía al backend la lista de proyectos NO preservados para su limpieza/borrado
 function ejecutarLimpiezaCompleta() {
-  // Construir lista de proyectos a borrar (Todos los inactivos MENOS los preservados)
-  const proyectosALimpiar = [];
-
-  todosLosProyectosInactivos.forEach((instancia) => {
-    instancia.proyectos.forEach((p) => {
-      const estaPreservado = proyectosPreservados.some(
-        (pres) =>
-          pres.instancia_id === instancia.id_instancia &&
-          pres.proyecto_id === p.id_proyecto,
-      );
-
-      if (!estaPreservado) {
-        proyectosALimpiar.push({
-          instancia_id: instancia.id_instancia,
-          proyecto_id: p.id_proyecto,
-          nombre_proyecto: p.nombre_proyecto,
-          nombre_instancia: instancia.nombre_instancia,
-        });
-      }
-    });
-  });
+  const proyectosALimpiar = estadoProyectos
+    .filter((p) => !p.preservado)
+    .map((p) => ({
+      instancia_id: p.id_instancia,
+      proyecto_id: p.id_proyecto,
+    }));
 
   if (proyectosALimpiar.length === 0) {
-    alert(
-      "No hay proyectos en la lista de limpieza. Todos los proyectos inactivos están preservados.",
-    );
+    alert("No hay proyectos pendientes por limpiar. Todos están preservados.");
     return;
   }
 
   const confirmacion = confirm(
-    `⚠️ ATENCIÓN: Se procederá a LIMPIAR / ELIMINAR ${proyectosALimpiar.length} proyectos inactivos de las instancias Dataiku.\n\n¿Estás seguro de autorizar esta operación?`,
+    `Está a punto de eliminar ${proyectosALimpiar.length} proyecto(s) de forma permanente.\n` +
+      `Los proyectos preservados NO serán afectados.\n¿Desea continuar?`,
   );
-
   if (!confirmacion) return;
 
-  $("#btn-autorizar-cambios")
-    .prop("disabled", true)
-    .text("Ejecutando limpieza...");
+  $("#btn-autorizar-cambios").prop("disabled", true).text("Procesando...");
 
   $.ajax({
     url: getWebAppBackendUrl("/ejecutar-limpieza"),
@@ -584,21 +606,33 @@ function ejecutarLimpiezaCompleta() {
       $("#btn-autorizar-cambios")
         .prop("disabled", false)
         .text("Conservar cambios y autorizar");
+
       if (response.status === "ok") {
         alert(
-          `✅ Proceso finalizado.\n\nExitosos: ${response.exitosos}\nFallidos: ${response.fallidos}`,
+          `Limpieza finalizada.\nExitosos: ${response.exitosos}\nFallidos: ${response.fallidos}`,
         );
-        proyectosPreservados = [];
-        cargarProyectosInactivos(); // Recargar el estado real desde Dataiku
+
+        // Quitar del estado los proyectos que sí se lograron eliminar
+        const idsExitosos = (response.detalles || [])
+          .filter((d) => d.status === "eliminado")
+          .map((d) => String(d.proyecto_id));
+
+        estadoProyectos = estadoProyectos.filter(
+          (p) => p.preservado || !idsExitosos.includes(String(p.id_proyecto)),
+        );
+
+        renderizarPanelIzquierdo();
+        renderizarPanelPreservados();
       } else {
-        alert("Error durante la limpieza: " + response.message);
+        alert("Error al ejecutar la limpieza: " + response.message);
       }
     },
-    error: function () {
+    error: function (err) {
       $("#btn-autorizar-cambios")
         .prop("disabled", false)
         .text("Conservar cambios y autorizar");
-      alert("Error de comunicación con el servidor al autorizar la limpieza.");
+      console.error("Error al ejecutar limpieza:", err);
+      alert("Ocurrió un error de conexión al ejecutar la limpieza.");
     },
   });
 }
