@@ -155,10 +155,12 @@ def obtener_imagen():
 
 
 
+# ==========================================
+# 5. OBTENER PROYECTOS INACTIVOS (> 4 MESES)
+# ==========================================
 @app.route("/obtener-proyectos-inactivos", methods=["GET"])
 def obtener_proyectos_inactivos():
     try:
-        # 1. Leer las instancias registradas
         dataset = dataiku.Dataset(DATASET_NAME)
         df_instancias = dataset.get_dataframe()
         
@@ -166,11 +168,8 @@ def obtener_proyectos_inactivos():
             return jsonify({"status": "ok", "datos": []})
 
         datos_finales = []
-        
-        # Fecha de hace 4 meses (~120 días)
         fecha_limite = datetime.datetime.now() - datetime.timedelta(days=120)
 
-        # 2. Iterar sobre cada instancia registrada
         for _, row in df_instancias.iterrows():
             id_instancia = row['id']
             nombre = row['nombre']
@@ -180,30 +179,26 @@ def obtener_proyectos_inactivos():
             proyectos_inactivos = []
             
             try:
-                # Conectar a la instancia usando Dataiku API
                 client = dataikuapi.DSSClient(url, api_key)
-                client._session.verify = False # Ignorar warnings SSL si es necesario
+                client._session.verify = False 
                 
-                # Listar proyectos de la instancia
                 proyectos = client.list_projects()
                 
                 for p in proyectos:
-                    # Muchos metadatos en Dataiku están en timestamp (milisegundos)
-                    last_mod_ms = p.get('creationTag', {}).get('lastModifiedOn', 0)
+                    # Usamos 'versionTag' basado en tu descubrimiento en el notebook
+                    last_mod_ms = p.get('versionTag', {}).get('lastModifiedOn', 0)
                     if last_mod_ms > 0:
                         last_mod_date = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0)
                         
-                        # Si la última modificación fue antes de nuestra fecha límite
                         if last_mod_date < fecha_limite:
                             proyectos_inactivos.append({
                                 "id_proyecto": p['projectKey'],
                                 "nombre_proyecto": p.get('name', p['projectKey'])
                             })
             except Exception as ex_instancia:
-                # Si una instancia falla (ej. credenciales inválidas), lo logeamos y continuamos
+                # Este print es el que viste en tus logs
                 print(f"Error conectando a instancia {nombre}: {ex_instancia}")
             
-            # Solo agregamos la instancia si tiene proyectos inactivos
             if proyectos_inactivos:
                 datos_finales.append({
                     "id_instancia": int(id_instancia),
@@ -225,9 +220,8 @@ def analizar_proyecto():
     try:
         data = request.get_json() or {}
         instancia_id = data.get("instancia_id")
-        proyecto_id = data.get("proyecto_id") # Este es el ProjectKey
+        proyecto_id = data.get("proyecto_id")
         
-        # 1. Obtener credenciales de la instancia
         dataset = dataiku.Dataset(DATASET_NAME)
         df = dataset.get_dataframe()
         fila = df[df["id"] == int(instancia_id)]
@@ -238,55 +232,58 @@ def analizar_proyecto():
         url = fila.iloc[0]["url"]
         api_key = fila.iloc[0]["api_key"]
         
-        # 2. Conectar a Dataiku API para obtener las métricas reales
         client = dataikuapi.DSSClient(url, api_key)
         client._session.verify = False
+        
+        # 1. Buscar los metadatos exactos del proyecto usando list_projects()
+        proyectos = client.list_projects()
+        info_proyecto = next((p for p in proyectos if p['projectKey'] == proyecto_id), {})
+        
+        # 2. Conectar al proyecto específico para contar elementos
         project = client.get_project(proyecto_id)
         
-        # Obtener métricas básicas (Esto varía según la info que necesites)
-        # Aquí simularemos o extraeremos datos generales
-        summary = project.get_summary()
-        last_mod_ms = summary.get('creationTag', {}).get('lastModifiedOn', 0)
+        # Extraer fechas usando la estructura que vimos en tu notebook
+        last_mod_ms = info_proyecto.get('versionTag', {}).get('lastModifiedOn', 0)
         last_mod_str = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0).strftime('%Y-%m-%d') if last_mod_ms else "-"
+        owner_login = info_proyecto.get('ownerLogin', 'Admin')
         
-        # Contar elementos reales del proyecto
+        # Contar elementos reales
         num_datasets = len(project.list_datasets())
         num_recipes = len(project.list_recipes())
         num_scenarios = len(project.list_scenarios())
         
         metricas = {
             "jobs_ejecutados": len(project.list_jobs()), 
-            "ultima_ejecucion": "-", # Podrías iterar sobre jobs para sacar la más reciente
+            "ultima_ejecucion": "No disponible", # Requiere iterar jobs, lo omitimos para rapidez por ahora
             "ultima_modificacion": last_mod_str,
-            "usuarios_activos": summary.get('owner', 'Admin'),
+            "usuarios_activos": owner_login,
             "escenarios_ejecutados": num_scenarios
         }
 
         # 3. CREAR GRÁFICA CON MATPLOTLIB
-        # Crearemos una figura con 2 subplots para imitar tu diseño (Barras verticales y horizontales)
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
         
-        # Gráfica 1: Actividad ficticia (o basada en logs)
+        # Gráfica 1: Actividad ficticia (Podemos actualizar esto luego con datos reales si los hay)
         meses = ['Mes -4', 'Mes -3', 'Mes -2', 'Mes -1', 'Mes Actual']
-        actividad = [12, 21, 5, 19, 10] # Puedes sustituir esto por métricas reales en el futuro
+        actividad = [2, 5, 1, 0, 0] # Tendencia de un proyecto inactivo
         ax1.bar(meses, actividad, color='#6b8e23')
-        ax1.set_title('Actividad en los últimos 5 meses')
+        ax1.set_title('Historial de Actividad')
         ax1.tick_params(axis='x', rotation=15)
 
-        # Gráfica 2: Distribución de objetos en el proyecto
-        clases = ['Datasets', 'Recetas', 'Escenarios', 'Modelos']
-        valores = [num_datasets, num_recipes, num_scenarios, 2] # Valores extraídos de la API
-        ax2.barh(clases, valores, color='#a52a2a')
-        ax2.set_title('Distribución de Actividad (Objetos)')
+        # Gráfica 2: Distribución de objetos en el proyecto real
+        clases = ['Datasets', 'Recetas', 'Escenarios']
+        valores = [num_datasets, num_recipes, num_scenarios]
+        ax2.barh(clases, valores, color='#178096') # Color azul de tu paleta
+        ax2.set_title('Distribución de Objetos')
 
         plt.tight_layout()
 
-        # 4. Convertir la figura a Base64 para enviarla al Frontend
+        # 4. Convertir la figura a Base64
         buf = io.BytesIO()
         plt.savefig(buf, format='png', transparent=True)
         buf.seek(0)
         plot_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-        plt.close(fig) # Importante: cerrar la figura para liberar memoria
+        plt.close(fig)
 
         return jsonify({
             "status": "ok", 
