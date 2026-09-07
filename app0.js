@@ -7,11 +7,11 @@ let listaInstancias = [];
 $(document).ready(function () {
   cargarInstancias();
   registrarEventos();
-  cargarImagenLogo(); // <-- Agregamos la llamada para cargar la imagen al iniciar
+  cargarImagenLogo();
 });
 
 // ==========================================
-// 2. REGISTRO DE EVENTOS Y LISTAGEM
+// 2. REGISTRO DE EVENTOS (TODO EN UN SOLO LUGAR)
 // ==========================================
 function registrarEventos() {
   // Guardar nueva instancia desde el formulario principal
@@ -37,6 +37,50 @@ function registrarEventos() {
 
   $("#btn-guardar-edicion").on("click", function () {
     guardarEdicionInstancia();
+  });
+
+  // ---- Menú desplegable ----
+  $("#btn-menu-principal").on("click", function (e) {
+    e.stopPropagation(); // Evita que el clic se propague al documento
+    $("#dropdown-content").toggleClass("hidden");
+  });
+
+  // Cerrar el menú si se hace clic fuera de él
+  $(document).on("click", function () {
+    $("#dropdown-content").addClass("hidden");
+  });
+
+  // ---- Navegación tipo SPA ----
+  $(".nav-link").on("click", function (e) {
+    e.preventDefault();
+    const targetView = $(this).data("target");
+
+    // Actualizar estilo del menú
+    $(".nav-link").removeClass("active");
+    $(this).addClass("active");
+
+    // Ocultar todas las vistas y mostrar la seleccionada
+    $(".view-section").addClass("hidden");
+    $("#" + targetView).removeClass("hidden");
+
+    // Si entramos a la vista de análisis, cargamos los proyectos inactivos
+    if (targetView === "view-analisis") {
+      cargarProyectosInactivos();
+    }
+  });
+
+  // ---- Selección de proyecto en la vista de análisis ----
+  // Delegado sobre document porque .btn-project se crea dinámicamente
+  $(document).on("click", ".btn-project", function () {
+    // Resaltar el botón activo
+    $(".btn-project").removeClass("active");
+    $(this).addClass("active");
+
+    const idInstancia = $(this).data("instancia");
+    const idProyecto = $(this).data("proyecto");
+    const nombreProyecto = $(this).text();
+
+    consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto);
   });
 }
 
@@ -238,42 +282,7 @@ function limpiarFormulario() {
 }
 
 // ==========================================
-// 9. LÓGICA DE SPA Y MENÚ DESPLEGABLE
-// ==========================================
-$(document).ready(function () {
-  // Abrir / Cerrar el menú desplegable
-  $("#btn-menu-principal").on("click", function (e) {
-    e.stopPropagation(); // Evita que el clic se propague al documento
-    $("#dropdown-content").toggleClass("hidden");
-  });
-
-  // Cerrar el menú si se hace clic fuera de él
-  $(document).on("click", function () {
-    $("#dropdown-content").addClass("hidden");
-  });
-
-  // Manejar el cambio de vistas (SPA)
-  $(".nav-link").on("click", function (e) {
-    e.preventDefault();
-    const targetView = $(this).data("target");
-
-    // Actualizar estilo del menú
-    $(".nav-link").removeClass("active");
-    $(this).addClass("active");
-
-    // Ocultar todas las vistas y mostrar la seleccionada
-    $(".view-section").addClass("hidden");
-    $("#" + targetView).removeClass("hidden");
-
-    // Si entramos a la vista de análisis, cargamos los proyectos inactivos
-    if (targetView === "view-analisis") {
-      cargarProyectosInactivos();
-    }
-  });
-});
-
-// ==========================================
-// 10. LÓGICA DE LA VISTA 2 (ANÁLISIS DE PROYECTOS)
+// 9. LÓGICA DE LA VISTA 2 (ANÁLISIS DE PROYECTOS)
 // ==========================================
 
 // Carga la lista de instancias y sus proyectos inactivos en la barra lateral izquierda
@@ -339,19 +348,6 @@ function renderizarSidebarProyectos(datosPorInstancia) {
     sidebar.append(grupoHTML);
   });
 }
-
-// Evento al hacer clic en un proyecto (Delegación de eventos)
-$(document).on("click", ".btn-project", function () {
-  // Resaltar el botón activo
-  $(".btn-project").removeClass("active");
-  $(this).addClass("active");
-
-  const idInstancia = $(this).data("instancia");
-  const idProyecto = $(this).data("proyecto");
-  const nombreProyecto = $(this).text();
-
-  consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto);
-});
 
 // Obtener las métricas y la gráfica de Matplotlib
 function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {

@@ -255,3 +255,213 @@ body,
 .hidden {
   display: none !important;
 }
+
+/* ==========================================
+   7. NAVEGACIÓN Y MENÚ DESPLEGABLE (SPA)
+   ========================================== */
+.dropdown-menu-container {
+  position: relative;
+  margin-left: auto;
+}
+
+.btn-menu {
+  background-color: #ffffff;
+  color: var(--text-dark);
+  border: none;
+  padding: 8px 24px;
+  border-radius: var(--radius-btn);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dropdown-content {
+  position: absolute;
+  right: 0;
+  top: 45px;
+  background-color: #ffffff;
+  min-width: 220px;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.dropdown-content a {
+  color: var(--text-dark);
+  padding: 12px 18px;
+  text-decoration: none;
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.dropdown-content a:hover,
+.dropdown-content a.active {
+  background-color: var(--bg-input);
+}
+
+/* ==========================================
+   8. ESTRUCTURA DE LA VISTA 2 (ANALYSIS GRID)
+   ========================================== */
+.analysis-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 80px; /* Espacio para el botón flotante */
+}
+
+.scrollable-panel {
+  max-height: 75vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* Columna 1: Selección de proyectos */
+.instance-group h3 {
+  font-size: 15px;
+  color: var(--text-dark);
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-project {
+  background-color: #178096;
+  color: #ffffff;
+  border: none;
+  padding: 10px;
+  border-radius: 18px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-project:hover,
+.btn-project.active {
+  opacity: 0.85;
+  outline: 2px solid var(--btn-blue);
+}
+
+/* Columna 2: Dashboard principal */
+.dashboard-header h2 {
+  font-size: 18px;
+  color: var(--text-dark);
+  margin-bottom: 15px;
+}
+
+.charts-container {
+  background-color: #f8fafc;
+  border-radius: 16px;
+  padding: 15px;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+}
+
+.charts-container img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+#mensaje-grafica-vacia {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.metrics-container h3 {
+  font-size: 14px;
+  color: var(--text-dark);
+  margin-bottom: 10px;
+}
+
+.metrics-container ul {
+  list-style: none;
+  padding: 0;
+}
+
+.metrics-container li {
+  font-size: 13px;
+  color: var(--text-dark);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.metrics-container span {
+  font-weight: 400;
+}
+
+/* Columna 3: Proyectos preservados */
+.sidebar-blue {
+  background-color: #aae9f5 !important;
+  min-height: 400px;
+}
+
+.sidebar-blue h3 {
+  font-size: 15px;
+  color: var(--text-dark);
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.preserved-item {
+  background-color: #178096;
+  color: #ffffff;
+  padding: 12px;
+  border-radius: 16px;
+  text-align: center;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.btn-orange {
+  background-color: #ff6b00;
+  margin-top: 8px;
+}
+
+/* ==========================================
+   9. BARRA INFERIOR / BOTÓN FLOTANTE
+   ========================================== */
+.bottom-action-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: none; /* Permite interactuar con lo que esté detrás */
+}
+
+.btn-yellow {
+  pointer-events: auto;
+  background-color: #ffee00;
+  color: #000000;
+  border: none;
+  padding: 14px 40px;
+  border-radius: 25px;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.btn-yellow:hover {
+  transform: scale(1.03);
+}
