@@ -1,0 +1,471 @@
+# ==========================================
+# 7. EJECUTAR LIMPIEZA / BORRADO DE PROYECTOS
+# ==========================================
+@app.route("/ejecutar-limpieza", methods=["POST"])
+def ejecutar_limpieza():
+    try:
+        data = request.get_json() or {}
+        proyectos_a_limpiar = data.get("proyectos_a_limpiar", [])
+        
+        if not proyectos_a_limpiar:
+            return jsonify({"status": "ok", "message": "No hay proyectos pendientes por limpiar.", "exitosos": 0, "fallidos": 0})
+
+        dataset = dataiku.Dataset(DATASET_NAME)
+        df = dataset.get_dataframe()
+        
+        exitosos = 0
+        fallidos = 0
+        detalles = []
+
+        for item in proyectos_a_limpiar:
+            instancia_id = item.get("instancia_id")
+            proyecto_id = item.get("proyecto_id")
+            
+            fila = df[df["id"] == int(instancia_id)]
+            if fila.empty:
+                fallidos += 1
+                detalles.append({"proyecto_id": proyecto_id, "status": "error", "message": "Instancia no encontrada"})
+                continue
+                
+            url = fila.iloc[0]["url"]
+            api_key = fila.iloc[0]["api_key"]
+            nombre_inst = fila.iloc[0]["nombre"]
+            
+            try:
+                client = dataikuapi.DSSClient(url, api_key)
+                client._session.verify = False
+                
+                # Obtener el proyecto y ejecutar borrado profundo según los parámetros requeridos
+                project = client.get_project(proyecto_id)
+                project.delete(
+                    clear_managed_datasets=True,
+                    clear_output_managed_folders=True,
+                    clear_job_and_scenario_logs=True
+                )
+                exitosos += 1
+                detalles.append({"proyecto_id": proyecto_id, "instancia": nombre_inst, "status": "eliminado"})
+            except Exception as ex:
+                fallidos += 1
+                detalles.append({"proyecto_id": proyecto_id, "instancia": nombre_inst, "status": "error", "message": str(ex)})
+
+        return jsonify({
+            "status": "ok",
+            "exitosos": exitosos,
+            "fallidos": fallidos,
+            "detalles": detalles
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="metrics-container mt-3 text-center">
+  <h3>Métricas del Proyecto</h3>
+  <ul id="lista-metricas">
+    <li>Jobs ejecutados: <span id="metric-jobs">0</span></li>
+    <li>Total Datasets: <span id="metric-datasets">0</span></li>
+    <li>Última modificación: <span id="metric-last-mod">-</span></li>
+    <li>Propietario: <span id="metric-users">-</span></li>
+    <li>Escenarios configurados: <span id="metric-scenarios">0</span></li>
+  </ul>
+  
+  <!-- Botón Preservar dentro del Panel Central -->
+  <button id="btn-preservar-centro" class="btn btn-success mt-3 hidden" onclick="preservarProyectoActual()">
+    🛡️ Preservar Proyecto
+  </button>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="preserved-panel">
+  <h3>Proyectos Preservados</h3>
+  <div id="lista-preservados">
+    <!-- Se llena dinámicamente con JS -->
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="action-bar text-end p-3">
+  <button id="btn-autorizar-cambios" class="btn btn-danger btn-lg" onclick="ejecutarLimpiezaCompleta()">
+    Conservar cambios y autorizar
+  </button>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ==========================================
+// ESTADO GLOBAL DE PROYECTOS Y PANELS
+// ==========================================
+let todosLosProyectosInactivos = []; // Proyectos devueltos por el backend
+let proyectosPreservados = [];       // [{ instancia_id, proyecto_id, nombre_proyecto, nombre_instancia }]
+let proyectoSeleccionadoActual = null; 
+
+// 1. CARGAR PROYECTOS DESDE EL BACKEND
+function cargarProyectosInactivos() {
+  $("#sidebar-projects").html('<p class="text-center text-muted">Cargando proyectos inactivos...</p>');
+  
+  $.ajax({
+    url: getWebAppBackendUrl("/obtener-proyectos-inactivos"),
+    type: "GET",
+    success: function (response) {
+      if (response.status === "ok") {
+        todosLosProyectosInactivos = response.datos || [];
+        renderizarPaneles();
+      } else {
+        $("#sidebar-projects").html('<p class="text-center text-danger">Error al obtener proyectos.</p>');
+      }
+    },
+    error: function () {
+      $("#sidebar-projects").html('<p class="text-center text-danger">Error de conexión.</p>');
+    }
+  });
+}
+
+// 2. RENDERIZAR PANEL IZQUIERDO Y PANEL DERECHO
+function renderizarPaneles() {
+  renderizarPanelIzquierdo();
+  renderizarPanelDerecho();
+}
+
+// Panel Izquierdo: Muestra solo los proyectos que NO han sido preservados
+function renderizarPanelIzquierdo() {
+  const container = $("#sidebar-projects");
+  container.empty();
+
+  if (todosLosProyectosInactivos.length === 0) {
+    container.html('<p class="text-center text-muted">No se encontraron proyectos inactivos (>4 meses).</p>');
+    return;
+  }
+
+  todosLosProyectosInactivos.forEach(instancia => {
+    // Filtrar proyectos que NO estén en la lista de preservados
+    const proyectosSinPreservar = instancia.proyectos.filter(p => 
+      !proyectosPreservados.some(pres => pres.instancia_id === instancia.id_instancia && pres.proyecto_id === p.id_proyecto)
+    );
+
+    let htmlGroup = `
+      <div class="instance-group mb-3">
+        <h5 class="instance-title" style="font-size:13px; font-weight:bold; color:#178096;">
+          ⚙️ ${instancia.nombre_instancia} (${proyectosSinPreservar.length})
+        </h5>
+        <div class="list-group">
+    `;
+
+    if (proyectosSinPreservar.length === 0) {
+      htmlGroup += `<p class="text-muted small ps-2">Todos los proyectos preservados</p>`;
+    } else {
+      proyectosSinPreservar.forEach(p => {
+        const esSeleccionado = proyectoSeleccionadoActual && 
+          proyectoSeleccionadoActual.instancia_id === instancia.id_instancia && 
+          proyectoSeleccionadoActual.proyecto_id === p.id_proyecto;
+
+        htmlGroup += `
+          <button class="list-group-item list-group-item-action project-pill ${esSeleccionado ? 'active' : ''}" 
+                  onclick="seleccionarProyecto(${instancia.id_instancia}, '${p.id_proyecto}', '${p.nombre_proyecto}', '${instancia.nombre_instancia}')">
+            <span>${p.nombre_proyecto}</span>
+            <small class="d-block text-muted" style="font-size:10px;">${p.id_proyecto}</small>
+          </button>
+        `;
+      });
+    }
+
+    htmlGroup += `</div></div>`;
+    container.append(htmlGroup);
+  });
+}
+
+// 3. SELECCIONAR PROYECTO PARA ANALIZAR
+function seleccionarProyecto(idInstancia, idProyecto, nombreProyecto, nombreInstancia) {
+  proyectoSeleccionadoActual = {
+    instancia_id: idInstancia,
+    proyecto_id: idProyecto,
+    nombre_proyecto: nombreProyecto,
+    nombre_instancia: nombreInstancia
+  };
+  
+  renderizarPanelIzquierdo(); // Refrescar estado activo en la lista
+  
+  $("#btn-preservar-centro").removeClass("hidden"); // Mostrar botón de preservar
+  
+  consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto);
+}
+
+// 4. ACCIÓN: PRESERVAR PROYECTO (PANEL CENTRAL -> DERECHO)
+function preservarProyectoActual() {
+  if (!proyectoSeleccionadoActual) return;
+
+  const yaExiste = proyectosPreservados.some(p => 
+    p.instancia_id === proyectoSeleccionadoActual.instancia_id && 
+    p.proyecto_id === proyectoSeleccionadoActual.proyecto_id
+  );
+
+  if (!yaExiste) {
+    proyectosPreservados.push({...proyectoSeleccionadoActual});
+  }
+
+  // Limpiar panel central
+  $("#btn-preservar-centro").addClass("hidden");
+  $("#titulo-proyecto-seleccionado").text("Selecciona un proyecto");
+  $("#css-charts-wrapper").addClass("hidden");
+  $("#mensaje-grafica-vacia").removeClass("hidden").text("Proyecto preservado exitosamente.");
+  
+  proyectoSeleccionadoActual = null;
+  renderizarPaneles();
+}
+
+// Panel Derecho: Muestra proyectos preservados con su botón de revertir
+function renderizarPanelDerecho() {
+  const container = $("#lista-preservados");
+  container.empty();
+
+  if (proyectosPreservados.length === 0) {
+    container.html('<p class="text-center text-muted small mt-3">No hay proyectos preservados.</p>');
+    return;
+  }
+
+  proyectosPreservados.forEach((p, idx) => {
+    container.append(`
+      <div class="item-preservado-card p-2 mb-2 border rounded background-light d-flex justify-content-between align-items-center">
+        <div>
+          <strong style="font-size:12px; display:block;">${p.nombre_proyecto}</strong>
+          <small class="text-muted" style="font-size:10px;">${p.nombre_instancia} | ${p.proyecto_id}</small>
+        </div>
+        <button class="btn btn-sm btn-outline-warning" onclick="revertirProyecto(${idx})" title="Regresar a lista de limpieza">
+          ↩️
+        </button>
+      </div>
+    `);
+  });
+}
+
+// 5. ACCIÓN: REVERTIR PROYECTO (PANEL DERECHO -> IZQUIERDO)
+function revertirProyecto(index) {
+  proyectosPreservados.splice(index, 1);
+  renderizarPaneles();
+}
+
+// 6. ACCIÓN: CONSERVAR CAMBIOS Y AUTORIZAR (EJECUTAR LIMPIEZA)
+function ejecutarLimpiezaCompleta() {
+  // Construir lista de proyectos a borrar (Todos los inactivos MENOS los preservados)
+  const proyectosALimpiar = [];
+
+  todosLosProyectosInactivos.forEach(instancia => {
+    instancia.proyectos.forEach(p => {
+      const estaPreservado = proyectosPreservados.some(pres => 
+        pres.instancia_id === instancia.id_instancia && pres.proyecto_id === p.id_proyecto
+      );
+
+      if (!estaPreservado) {
+        proyectosALimpiar.push({
+          instancia_id: instancia.id_instancia,
+          proyecto_id: p.id_proyecto,
+          nombre_proyecto: p.nombre_proyecto,
+          nombre_instancia: instancia.nombre_instancia
+        });
+      }
+    });
+  });
+
+  if (proyectosALimpiar.length === 0) {
+    alert("No hay proyectos en la lista de limpieza. Todos los proyectos inactivos están preservados.");
+    return;
+  }
+
+  const confirmacion = confirm(`⚠️ ATENCIÓN: Se procederá a LIMPIAR / ELIMINAR ${proyectosALimpiar.length} proyectos inactivos de las instancias Dataiku.\n\n¿Estás seguro de autorizar esta operación?`);
+  
+  if (!confirmacion) return;
+
+  $("#btn-autorizar-cambios").prop("disabled", true).text("Ejecutando limpieza...");
+
+  $.ajax({
+    url: getWebAppBackendUrl("/ejecutar-limpieza"),
+    type: "POST",
+    contentType: "application/json",
+    data: JSON.stringify({ proyectos_a_limpiar: proyectosALimpiar }),
+    success: function (response) {
+      $("#btn-autorizar-cambios").prop("disabled", false).text("Conservar cambios y autorizar");
+      if (response.status === "ok") {
+        alert(`✅ Proceso finalizado.\n\nExitosos: ${response.exitosos}\nFallidos: ${response.fallidos}`);
+        proyectosPreservados = [];
+        cargarProyectosInactivos(); // Recargar el estado real desde Dataiku
+      } else {
+        alert("Error durante la limpieza: " + response.message);
+      }
+    },
+    error: function () {
+      $("#btn-autorizar-cambios").prop("disabled", false).text("Conservar cambios y autorizar");
+      alert("Error de comunicación con el servidor al autorizar la limpieza.");
+    }
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Tarjetas de Proyectos Preservados */
+.item-preservado-card {
+  background-color: #f8fafc;
+  border-left: 3px solid #28a745 !important;
+}
+
+.item-preservado-card strong {
+  color: var(--text-dark);
+}
+
+.hidden {
+  display: none !important;
+}
