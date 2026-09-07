@@ -2,7 +2,7 @@ import dataiku
 import pandas as pd
 from flask import request, jsonify
 
-# --- CONFIGURACIÓN PARA MATPLOTLIB EN SERVIDOR ---
+# --- CONFIGURACIÓN ---
 import matplotlib
 matplotlib.use('Agg') # Evita errores de renderizado en hilos del servidor
 import matplotlib.pyplot as plt
