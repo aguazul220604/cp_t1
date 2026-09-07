@@ -3,10 +3,14 @@
   <header class="app-header">
     <div style="display: flex; align-items: center; gap: 15px">
       <div class="header-logo">
-        <!-- Reemplaza este SVG por tu código SVG real -->
-        <svg class="logo-img" viewBox="0 0 100 100" width="45" height="45">
-          <circle cx="50" cy="50" r="40" fill="#ff0000" />
-        </svg>
+        <!-- Contenedor del logo con el ID esperado por JS -->
+        <img
+          id="mi-imagen-dinamica"
+          class="logo-img"
+          src=""
+          alt="Logo"
+          style="max-height: 45px; max-width: 45px"
+        />
       </div>
       <div class="header-titles">
         <span class="subtitle"
@@ -96,23 +100,9 @@
        ========================================== -->
   <div id="view-analisis" class="view-section hidden">
     <main class="analysis-grid">
-      <!-- Columna 1: Lista de Instancias y Proyectos (Botones) -->
-      <aside class="sidebar-projects scrollable-panel">
-        <!-- Esto se llenará dinámicamente desde JS, dejo un ejemplo de tu diseño -->
-        <div class="instance-group card-panel">
-          <h3>Instancia DEV 1</h3>
-          <div class="projects-list">
-            <button class="btn-project">Proyecto 1</button>
-            <button class="btn-project">Proyecto 2</button>
-            <button class="btn-project">Proyecto 3</button>
-          </div>
-        </div>
-        <div class="instance-group card-panel">
-          <h3>Instancia DEV 2</h3>
-          <div class="projects-list">
-            <button class="btn-project">Proyecto 1</button>
-          </div>
-        </div>
+      <!-- Columna 1: Lista de Instancias y Proyectos (ID AGREGADO AQUI) -->
+      <aside id="sidebar-projects" class="sidebar-projects scrollable-panel">
+        <!-- Se llena dinámicamente desde JS con renderizarPanelIzquierdo() -->
       </aside>
 
       <!-- Columna 2: Dashboard del Proyecto Seleccionado -->
@@ -121,53 +111,65 @@
           <h2 id="titulo-proyecto-seleccionado">Seleccione un proyecto</h2>
         </div>
 
-        <!-- Contenedor para las gráficas de Matplotlib -->
+        <!-- Contenedor para las gráficas CSS (VERTICAL Y HORIZONTAL) -->
         <div class="charts-container text-center">
-          <img
-            id="img-grafica-actividad"
-            src=""
-            alt="Gráfica no disponible"
-            class="hidden"
-          />
           <div id="mensaje-grafica-vacia">Esperando selección...</div>
+
+          <div id="css-charts-wrapper" class="hidden">
+            <div id="chart-vertical" class="chart-container-vertical"></div>
+            <div id="chart-horizontal" class="chart-container-horizontal"></div>
+          </div>
         </div>
 
         <!-- Métricas en texto -->
-        <div class="metrics-container">
-          <h3>Actividad mensual</h3>
+        <div class="metrics-container mt-3 text-center">
+          <h3>Métricas del Proyecto</h3>
           <ul id="lista-metricas">
             <li>Jobs ejecutados: <span id="metric-jobs">0</span></li>
-            <li>Última ejecución: <span id="metric-last-exec">-</span></li>
+            <li>Total Datasets: <span id="metric-datasets">0</span></li>
             <li>Última modificación: <span id="metric-last-mod">-</span></li>
-            <li>Usuarios activos: <span id="metric-users">0</span></li>
-            <li>Escenarios ejecutados: <span id="metric-scenarios">0</span></li>
+            <li>Propietario: <span id="metric-users">-</span></li>
+            <li>
+              Escenarios configurados: <span id="metric-scenarios">0</span>
+            </li>
           </ul>
+
+          <!-- Botón Preservar dentro del Panel Central -->
+          <button
+            id="btn-preservar-centro"
+            class="btn btn-success mt-3 hidden"
+            onclick="preservarProyectoActual()"
+          >
+            🛡️ Preservar Proyecto
+          </button>
         </div>
       </section>
 
       <!-- Columna 3: Proyectos Preservados y Reversión -->
       <aside class="sidebar-actions card-panel sidebar-blue">
-        <h3>Proyectos preservados</h3>
-        <div id="lista-preservados">
-          <!-- Ejemplo dinámico -->
-          <div class="preserved-item">
-            <p>Instancia DEV 2<br />Proyecto 1</p>
-            <button class="btn btn-action btn-orange">Revertir</button>
+        <div class="preserved-panel">
+          <h3>Proyectos Preservados</h3>
+          <div id="lista-preservados">
+            <!-- Se llena dinámicamente con JS -->
           </div>
         </div>
       </aside>
     </main>
 
     <!-- Botón flotante inferior -->
-    <div class="bottom-action-bar">
-      <button id="btn-autorizar-cambios" class="btn-yellow">
+    <div class="action-bar text-end p-3">
+      <button
+        id="btn-autorizar-cambios"
+        class="btn btn-danger btn-lg"
+        onclick="ejecutarLimpiezaCompleta()"
+      >
         Conservar cambios y autorizar
       </button>
     </div>
   </div>
 </div>
 
-<!-- MODAL EDITAR INSTANCIA (Se mantiene fuera de las vistas para sobreponerse a todo) -->
+<!-- MODAL EDITAR INSTANCIA -->
 <div id="modal-editar" class="modal-overlay hidden">
   <div class="modal-content">
     <h3>Editar Registro de Instancia</h3>

@@ -1,5 +1,10 @@
-// Variable global para almacenar el listado en memoria
+// ==========================================
+// VARIABLES GLOBALES
+// ==========================================
 let listaInstancias = [];
+let todosLosProyectosInactivos = []; // Proyectos devueltos por el backend
+let proyectosPreservados = []; // [{ instancia_id, proyecto_id, nombre_proyecto, nombre_instancia }]
+let proyectoSeleccionadoActual = null;
 
 // ==========================================
 // 1. INICIALIZACIÓN
@@ -11,7 +16,7 @@ $(document).ready(function () {
 });
 
 // ==========================================
-// 2. REGISTRO DE EVENTOS (TODO EN UN SOLO LUGAR)
+// 2. REGISTRO DE EVENTOS
 // ==========================================
 function registrarEventos() {
   // Guardar nueva instancia desde el formulario principal
@@ -68,20 +73,6 @@ function registrarEventos() {
       cargarProyectosInactivos();
     }
   });
-
-  // ---- Selección de proyecto en la vista de análisis ----
-  // Delegado sobre document porque .btn-project se crea dinámicamente
-  $(document).on("click", ".btn-project", function () {
-    // Resaltar el botón activo
-    $(".btn-project").removeClass("active");
-    $(this).addClass("active");
-
-    const idInstancia = $(this).data("instancia");
-    const idProyecto = $(this).data("proyecto");
-    const nombreProyecto = $(this).text();
-
-    consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto);
-  });
 }
 
 // ==========================================
@@ -113,7 +104,6 @@ function guardarInstancia() {
   const url = $("#url-instancia").val().trim();
   const apiKey = $("#api-key").val().trim();
 
-  // Validación básica del formulario (Frame 3)
   if (!nombre || !url || !apiKey) {
     alert("Usted no ha completado todos los campos del formulario");
     return;
@@ -229,7 +219,6 @@ function cargarImagenLogo() {
     type: "GET",
     success: function (response) {
       if (response.status === "ok") {
-        // Asigna la cadena Base64 al atributo src de tu etiqueta img en el HTML
         $("#mi-imagen-dinamica").attr(
           "src",
           "data:image/png;base64," + response.data,
@@ -282,90 +271,134 @@ function limpiarFormulario() {
 }
 
 // ==========================================
-// 9. LÓGICA DE LA VISTA 2 (ANÁLISIS DE PROYECTOS)
+// 9. LÓGICA DE LA VISTA 2 (ANÁLISIS DE PROYECTOS Y LIMPIEZA)
 // ==========================================
 
-// Carga la lista de instancias y sus proyectos inactivos en la barra lateral izquierda
+// 9.1 CARGAR PROYECTOS DESDE EL BACKEND
 function cargarProyectosInactivos() {
-  const sidebar = $(".sidebar-projects");
-  sidebar
-    .empty()
-    .append('<p class="text-center">Consultando proyectos en Dataiku...</p>');
+  $("#sidebar-projects").html(
+    '<p class="text-center text-muted">Cargando proyectos inactivos...</p>',
+  );
 
   $.ajax({
     url: getWebAppBackendUrl("/obtener-proyectos-inactivos"),
     type: "GET",
     success: function (response) {
       if (response.status === "ok") {
-        renderizarSidebarProyectos(response.datos);
+        todosLosProyectosInactivos = response.datos || [];
+        renderizarPaneles();
       } else {
-        sidebar
-          .empty()
-          .append(
-            `<p class="text-center text-red">Error: ${response.message}</p>`,
-          );
+        $("#sidebar-projects").html(
+          `<p class="text-center text-danger">Error al obtener proyectos: ${response.message}</p>`,
+        );
       }
     },
     error: function (err) {
       console.error("Error al obtener proyectos:", err);
-      sidebar
-        .empty()
-        .append('<p class="text-center">Ocurrió un error de conexión.</p>');
+      $("#sidebar-projects").html(
+        '<p class="text-center text-danger">Error de conexión.</p>',
+      );
     },
   });
 }
 
-function renderizarSidebarProyectos(datosPorInstancia) {
-  const sidebar = $(".sidebar-projects");
-  sidebar.empty();
+// 9.2 RENDERIZAR PANEL IZQUIERDO Y DERECHO
+function renderizarPaneles() {
+  renderizarPanelIzquierdo();
+  renderizarPanelDerecho();
+}
 
-  if (!datosPorInstancia || datosPorInstancia.length === 0) {
-    sidebar.append(
-      '<p class="text-center">No se encontraron proyectos inactivos.</p>',
+// Panel Izquierdo: Muestra solo los proyectos que NO han sido preservados
+function renderizarPanelIzquierdo() {
+  const container = $("#sidebar-projects");
+  container.empty();
+
+  if (todosLosProyectosInactivos.length === 0) {
+    container.html(
+      '<p class="text-center text-muted">No se encontraron proyectos inactivos (>4 meses).</p>',
     );
     return;
   }
 
-  // Iterar por cada instancia que regrese el backend
-  datosPorInstancia.forEach(function (instancia) {
-    let grupoHTML = `
-      <div class="instance-group card-panel">
-        <h3>Instancia ${instancia.nombre_instancia}</h3>
-        <div class="projects-list">
+  todosLosProyectosInactivos.forEach((instancia) => {
+    // Filtrar proyectos que NO estén en la lista de preservados
+    const proyectosSinPreservar = instancia.proyectos.filter(
+      (p) =>
+        !proyectosPreservados.some(
+          (pres) =>
+            pres.instancia_id === instancia.id_instancia &&
+            pres.proyecto_id === p.id_proyecto,
+        ),
+    );
+
+    let htmlGroup = `
+      <div class="instance-group mb-3 card-panel">
+        <h5 class="instance-title" style="font-size:13px; font-weight:bold; color:#178096;">
+          ⚙️ ${instancia.nombre_instancia} (${proyectosSinPreservar.length})
+        </h5>
+        <div class="list-group projects-list">
     `;
 
-    instancia.proyectos.forEach(function (proyecto) {
-      grupoHTML += `
-        <button class="btn-project" 
-                data-instancia="${instancia.id_instancia}" 
-                data-proyecto="${proyecto.id_proyecto}">
-          ${proyecto.nombre_proyecto}
-        </button>
-      `;
-    });
+    if (proyectosSinPreservar.length === 0) {
+      htmlGroup += `<p class="text-muted small ps-2">Todos los proyectos preservados</p>`;
+    } else {
+      proyectosSinPreservar.forEach((p) => {
+        const esSeleccionado =
+          proyectoSeleccionadoActual &&
+          proyectoSeleccionadoActual.instancia_id === instancia.id_instancia &&
+          proyectoSeleccionadoActual.proyecto_id === p.id_proyecto;
 
-    grupoHTML += `</div></div>`;
-    sidebar.append(grupoHTML);
+        htmlGroup += `
+          <button class="list-group-item list-group-item-action project-pill btn-project ${esSeleccionado ? "active" : ""}" 
+                  onclick="seleccionarProyecto(${instancia.id_instancia}, '${p.id_proyecto}', '${p.nombre_proyecto}', '${instancia.nombre_instancia}')">
+            <span>${p.nombre_proyecto}</span>
+            <small class="d-block text-muted" style="font-size:10px;">${p.id_proyecto}</small>
+          </button>
+        `;
+      });
+    }
+
+    htmlGroup += `</div></div>`;
+    container.append(htmlGroup);
   });
 }
 
-// Obtener las métricas y la gráfica de Matplotlib
+// 9.3 SELECCIONAR PROYECTO PARA ANALIZAR
+function seleccionarProyecto(
+  idInstancia,
+  idProyecto,
+  nombreProyecto,
+  nombreInstancia,
+) {
+  proyectoSeleccionadoActual = {
+    instancia_id: idInstancia,
+    proyecto_id: idProyecto,
+    nombre_proyecto: nombreProyecto,
+    nombre_instancia: nombreInstancia,
+  };
+
+  renderizarPanelIzquierdo(); // Refrescar estado activo en la lista
+
+  $("#btn-preservar-centro").removeClass("hidden"); // Mostrar botón de preservar
+
+  consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto);
+}
+
+// 9.4 CONSULTAR MÉTRICAS DEL PROYECTO
 function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
   $("#titulo-proyecto-seleccionado").text(nombreProyecto);
 
-  // Ocultar imagen anterior y mostrar mensaje de carga
-  $("#img-grafica-actividad").addClass("hidden").attr("src", "");
+  // Mostrar mensaje de carga
+  $("#css-charts-wrapper").addClass("hidden");
   $("#mensaje-grafica-vacia")
     .removeClass("hidden")
-    .text("Generando gráfica y calculando métricas...");
+    .text("Calculando métricas...");
 
-  $("#metric-jobs, #metric-datasets, #metric-scenarios").text("...");
-  $("#metric-last-mod, #metric-users").text("Calculando...");
+  $(
+    "#metric-jobs, #metric-datasets, #metric-scenarios, #metric-last-mod, #metric-users",
+  ).text("...");
 
-  const payload = {
-    instancia_id: idInstancia,
-    proyecto_id: idProyecto,
-  };
+  const payload = { instancia_id: idInstancia, proyecto_id: idProyecto };
 
   $.ajax({
     url: getWebAppBackendUrl("/analizar-proyecto"),
@@ -374,41 +407,198 @@ function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
     data: JSON.stringify(payload),
     success: function (response) {
       if (response.status === "ok") {
-        // 1. Mostrar la gráfica si viene el base64
-        if (response.grafica_b64 && response.grafica_b64.length > 100) {
-          const srcBase64 =
-            "data:image/png;base64," + response.grafica_b64.trim();
+        $("#mensaje-grafica-vacia").addClass("hidden");
+        $("#css-charts-wrapper").removeClass("hidden");
 
-          $("#img-grafica-actividad")
-            .attr("src", srcBase64)
-            .removeClass("hidden")
-            .css("display", "block"); // Garantizar visibilidad
+        // DIBUJAR GRÁFICAS CSS
+        renderizarGraficasCSS(response.datos_graficas);
 
-          $("#mensaje-grafica-vacia").addClass("hidden");
-        } else {
-          $("#mensaje-grafica-vacia")
-            .removeClass("hidden")
-            .text("Sin datos para graficar.");
-        }
-
-        // 2. Actualizar las métricas
+        // ACTUALIZAR MÉTRICAS DE TEXTO
         const m = response.metricas;
         $("#metric-jobs").text(m.jobs_ejecutados);
-        $("#metric-datasets").text(m.total_datasets); // Nueva métrica
+        $("#metric-datasets").text(m.total_datasets);
         $("#metric-last-mod").text(m.ultima_modificacion);
         $("#metric-users").text(m.propietario);
         $("#metric-scenarios").text(m.escenarios_ejecutados);
       } else {
         $("#mensaje-grafica-vacia")
           .removeClass("hidden")
-          .text("Error al analizar: " + response.message);
+          .text("Error: " + response.message);
       }
     },
     error: function (err) {
-      console.error("Error en analizar-proyecto:", err);
       $("#mensaje-grafica-vacia")
         .removeClass("hidden")
-        .text("Ocurrió un error en la solicitud.");
+        .text("Error en la solicitud.");
+    },
+  });
+}
+
+// Función auxiliar para dibujar las barras
+function renderizarGraficasCSS(datosGraficas) {
+  // Gráfica Vertical (Tendencia)
+  const vContainer = $("#chart-vertical");
+  vContainer.empty();
+  const vData = datosGraficas.tendencia;
+  const vMax = Math.max(...vData.valores, 1); // Evitar división por cero
+
+  vData.valores.forEach((val, i) => {
+    const heightPct = (val / vMax) * 100;
+    vContainer.append(`
+      <div class="v-bar-container" title="Valor: ${val}">
+        <div class="v-bar" style="height: ${heightPct}%"></div>
+        <div class="v-label">${vData.etiquetas[i]}</div>
+      </div>
+    `);
+  });
+
+  // Gráfica Horizontal (Estructura)
+  const hContainer = $("#chart-horizontal");
+  hContainer.empty();
+  const hData = datosGraficas.estructura;
+  const hMax = Math.max(...hData.valores, 1);
+
+  hData.valores.forEach((val, i) => {
+    const widthPct = (val / hMax) * 80; // 80% máximo para dejar espacio al número
+    hContainer.append(`
+      <div class="h-bar-container">
+        <div class="h-label">${hData.etiquetas[i]}</div>
+        <div class="h-bar" style="width: ${widthPct}%"></div>
+        <div class="h-val">${val}</div>
+      </div>
+    `);
+  });
+}
+
+// 9.5 ACCIÓN: PRESERVAR PROYECTO (PANEL CENTRAL -> DERECHO)
+function preservarProyectoActual() {
+  if (!proyectoSeleccionadoActual) return;
+
+  const yaExiste = proyectosPreservados.some(
+    (p) =>
+      p.instancia_id === proyectoSeleccionadoActual.instancia_id &&
+      p.proyecto_id === proyectoSeleccionadoActual.proyecto_id,
+  );
+
+  if (!yaExiste) {
+    proyectosPreservados.push({ ...proyectoSeleccionadoActual });
+  }
+
+  // Limpiar panel central
+  $("#btn-preservar-centro").addClass("hidden");
+  $("#titulo-proyecto-seleccionado").text("Selecciona un proyecto");
+  $("#css-charts-wrapper").addClass("hidden");
+  $("#mensaje-grafica-vacia")
+    .removeClass("hidden")
+    .text("Proyecto preservado exitosamente.");
+
+  // Limpiar contadores de métricas
+  $(
+    "#metric-jobs, #metric-datasets, #metric-scenarios, #metric-last-mod, #metric-users",
+  ).text("0");
+
+  proyectoSeleccionadoActual = null;
+  renderizarPaneles();
+}
+
+// Panel Derecho: Muestra proyectos preservados con su botón de revertir
+function renderizarPanelDerecho() {
+  const container = $("#lista-preservados");
+  container.empty();
+
+  if (proyectosPreservados.length === 0) {
+    container.html(
+      '<p class="text-center text-muted small mt-3">No hay proyectos preservados.</p>',
+    );
+    return;
+  }
+
+  proyectosPreservados.forEach((p, idx) => {
+    container.append(`
+      <div class="item-preservado-card p-2 mb-2 border rounded background-light d-flex justify-content-between align-items-center">
+        <div>
+          <strong style="font-size:12px; display:block;">${p.nombre_proyecto}</strong>
+          <small class="text-muted" style="font-size:10px;">${p.nombre_instancia} | ${p.proyecto_id}</small>
+        </div>
+        <button class="btn btn-sm btn-outline-warning" onclick="revertirProyecto(${idx})" title="Regresar a lista de limpieza">
+          ↩️
+        </button>
+      </div>
+    `);
+  });
+}
+
+// 9.6 ACCIÓN: REVERTIR PROYECTO (PANEL DERECHO -> IZQUIERDO)
+function revertirProyecto(index) {
+  proyectosPreservados.splice(index, 1);
+  renderizarPaneles();
+}
+
+// 9.7 ACCIÓN: CONSERVAR CAMBIOS Y AUTORIZAR (EJECUTAR LIMPIEZA)
+function ejecutarLimpiezaCompleta() {
+  // Construir lista de proyectos a borrar (Todos los inactivos MENOS los preservados)
+  const proyectosALimpiar = [];
+
+  todosLosProyectosInactivos.forEach((instancia) => {
+    instancia.proyectos.forEach((p) => {
+      const estaPreservado = proyectosPreservados.some(
+        (pres) =>
+          pres.instancia_id === instancia.id_instancia &&
+          pres.proyecto_id === p.id_proyecto,
+      );
+
+      if (!estaPreservado) {
+        proyectosALimpiar.push({
+          instancia_id: instancia.id_instancia,
+          proyecto_id: p.id_proyecto,
+          nombre_proyecto: p.nombre_proyecto,
+          nombre_instancia: instancia.nombre_instancia,
+        });
+      }
+    });
+  });
+
+  if (proyectosALimpiar.length === 0) {
+    alert(
+      "No hay proyectos en la lista de limpieza. Todos los proyectos inactivos están preservados.",
+    );
+    return;
+  }
+
+  const confirmacion = confirm(
+    `⚠️ ATENCIÓN: Se procederá a LIMPIAR / ELIMINAR ${proyectosALimpiar.length} proyectos inactivos de las instancias Dataiku.\n\n¿Estás seguro de autorizar esta operación?`,
+  );
+
+  if (!confirmacion) return;
+
+  $("#btn-autorizar-cambios")
+    .prop("disabled", true)
+    .text("Ejecutando limpieza...");
+
+  $.ajax({
+    url: getWebAppBackendUrl("/ejecutar-limpieza"),
+    type: "POST",
+    contentType: "application/json",
+    data: JSON.stringify({ proyectos_a_limpiar: proyectosALimpiar }),
+    success: function (response) {
+      $("#btn-autorizar-cambios")
+        .prop("disabled", false)
+        .text("Conservar cambios y autorizar");
+      if (response.status === "ok") {
+        alert(
+          `✅ Proceso finalizado.\n\nExitosos: ${response.exitosos}\nFallidos: ${response.fallidos}`,
+        );
+        proyectosPreservados = [];
+        cargarProyectosInactivos(); // Recargar el estado real desde Dataiku
+      } else {
+        alert("Error durante la limpieza: " + response.message);
+      }
+    },
+    error: function () {
+      $("#btn-autorizar-cambios")
+        .prop("disabled", false)
+        .text("Conservar cambios y autorizar");
+      alert("Error de comunicación con el servidor al autorizar la limpieza.");
     },
   });
 }
