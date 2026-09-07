@@ -351,16 +351,16 @@ function renderizarSidebarProyectos(datosPorInstancia) {
 
 // Obtener las métricas y la gráfica de Matplotlib
 function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
-  // Preparar el dashboard central para la carga
   $("#titulo-proyecto-seleccionado").text(nombreProyecto);
-  $("#img-grafica-actividad").addClass("hidden");
+
+  // Ocultar imagen anterior y mostrar mensaje de carga
+  $("#img-grafica-actividad").addClass("hidden").attr("src", "");
   $("#mensaje-grafica-vacia")
     .removeClass("hidden")
     .text("Generando gráfica y calculando métricas...");
 
-  // Limpiar métricas temporales
-  $("#metric-jobs, #metric-users, #metric-scenarios").text("...");
-  $("#metric-last-exec, #metric-last-mod").text("Calculando...");
+  $("#metric-jobs, #metric-datasets, #metric-scenarios").text("...");
+  $("#metric-last-mod, #metric-users").text("Calculando...");
 
   const payload = {
     instancia_id: idInstancia,
@@ -374,32 +374,41 @@ function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
     data: JSON.stringify(payload),
     success: function (response) {
       if (response.status === "ok") {
-        // 1. Mostrar la gráfica (Matplotlib manda base64)
-        if (response.grafica_b64) {
+        // 1. Mostrar la gráfica si viene el base64
+        if (response.grafica_b64 && response.grafica_b64.length > 100) {
+          const srcBase64 =
+            "data:image/png;base64," + response.grafica_b64.trim();
+
           $("#img-grafica-actividad")
-            .attr("src", "data:image/png;base64," + response.grafica_b64)
-            .removeClass("hidden");
+            .attr("src", srcBase64)
+            .removeClass("hidden")
+            .css("display", "block"); // Garantizar visibilidad
+
           $("#mensaje-grafica-vacia").addClass("hidden");
         } else {
-          $("#mensaje-grafica-vacia").text("Sin datos para graficar.");
+          $("#mensaje-grafica-vacia")
+            .removeClass("hidden")
+            .text("Sin datos para graficar.");
         }
 
         // 2. Actualizar las métricas
         const m = response.metricas;
         $("#metric-jobs").text(m.jobs_ejecutados);
-        $("#metric-last-exec").text(m.ultima_ejecucion);
+        $("#metric-datasets").text(m.total_datasets); // Nueva métrica
         $("#metric-last-mod").text(m.ultima_modificacion);
-        $("#metric-users").text(m.usuarios_activos);
+        $("#metric-users").text(m.propietario);
         $("#metric-scenarios").text(m.escenarios_ejecutados);
       } else {
-        $("#mensaje-grafica-vacia").text(
-          "Error al analizar proyecto: " + response.message,
-        );
+        $("#mensaje-grafica-vacia")
+          .removeClass("hidden")
+          .text("Error al analizar: " + response.message);
       }
     },
     error: function (err) {
       console.error("Error en analizar-proyecto:", err);
-      $("#mensaje-grafica-vacia").text("Ocurrió un error en la solicitud.");
+      $("#mensaje-grafica-vacia")
+        .removeClass("hidden")
+        .text("Ocurrió un error en la solicitud.");
     },
   });
 }

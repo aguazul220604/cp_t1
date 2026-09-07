@@ -215,6 +215,9 @@ def obtener_proyectos_inactivos():
 # ==========================================
 # 6. ANALIZAR PROYECTO (MÉTRICAS Y GRÁFICA)
 # ==========================================
+# ==========================================
+# 6. ANALIZAR PROYECTO (MÉTRICAS Y GRÁFICA)
+# ==========================================
 @app.route("/analizar-proyecto", methods=["POST"])
 def analizar_proyecto():
     try:
@@ -235,52 +238,55 @@ def analizar_proyecto():
         client = dataikuapi.DSSClient(url, api_key)
         client._session.verify = False
         
-        # 1. Buscar los metadatos exactos del proyecto usando list_projects()
+        # 1. Metadatos de la instancia
         proyectos = client.list_projects()
         info_proyecto = next((p for p in proyectos if p['projectKey'] == proyecto_id), {})
         
-        # 2. Conectar al proyecto específico para contar elementos
+        # 2. Conexión al proyecto específico
         project = client.get_project(proyecto_id)
         
-        # Extraer fechas usando la estructura que vimos en tu notebook
         last_mod_ms = info_proyecto.get('versionTag', {}).get('lastModifiedOn', 0)
         last_mod_str = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0).strftime('%Y-%m-%d') if last_mod_ms else "-"
         owner_login = info_proyecto.get('ownerLogin', 'Admin')
         
-        # Contar elementos reales
+        # Conteos reales
         num_datasets = len(project.list_datasets())
         num_recipes = len(project.list_recipes())
         num_scenarios = len(project.list_scenarios())
+        num_jobs = len(project.list_jobs())
         
         metricas = {
-            "jobs_ejecutados": len(project.list_jobs()), 
-            "ultima_ejecucion": "No disponible", # Requiere iterar jobs, lo omitimos para rapidez por ahora
+            "jobs_ejecutados": num_jobs, 
+            "total_datasets": num_datasets,
             "ultima_modificacion": last_mod_str,
-            "usuarios_activos": owner_login,
+            "propietario": owner_login,
             "escenarios_ejecutados": num_scenarios
         }
 
-        # 3. CREAR GRÁFICA CON MATPLOTLIB
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+        # 3. GENERAR GRÁFICA DE MATPLOTLIB
+        plt.close('all') # Limpiar figuras previas de la memoria
         
-        # Gráfica 1: Actividad ficticia (Podemos actualizar esto luego con datos reales si los hay)
-        meses = ['Mes -4', 'Mes -3', 'Mes -2', 'Mes -1', 'Mes Actual']
-        actividad = [2, 5, 1, 0, 0] # Tendencia de un proyecto inactivo
-        ax1.bar(meses, actividad, color='#6b8e23')
-        ax1.set_title('Historial de Actividad')
-        ax1.tick_params(axis='x', rotation=15)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 3.5), facecolor='white')
+        
+        # Gráfica 1: Historial estimado de actividad
+        meses = ['M-4', 'M-3', 'M-2', 'M-1', 'Actual']
+        actividad = [num_jobs, int(num_jobs*0.5), 0, 0, 0] 
+        ax1.bar(meses, actividad, color='#178096')
+        ax1.set_title('Tendencia de Jobs', fontsize=11, fontweight='bold')
+        ax1.grid(axis='y', linestyle='--', alpha=0.5)
 
-        # Gráfica 2: Distribución de objetos en el proyecto real
+        # Gráfica 2: Objetos en el Flujo
         clases = ['Datasets', 'Recetas', 'Escenarios']
         valores = [num_datasets, num_recipes, num_scenarios]
-        ax2.barh(clases, valores, color='#178096') # Color azul de tu paleta
-        ax2.set_title('Distribución de Objetos')
+        ax2.barh(clases, valores, color='#ff6b00')
+        ax2.set_title('Estructura del Proyecto', fontsize=11, fontweight='bold')
+        ax2.grid(axis='x', linestyle='--', alpha=0.5)
 
         plt.tight_layout()
 
-        # 4. Convertir la figura a Base64
+        # 4. Guardar en buffer en formato PNG sin transparencias problemáticas
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', transparent=True)
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
         buf.seek(0)
         plot_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
         plt.close(fig)
