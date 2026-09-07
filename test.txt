@@ -1,0 +1,382 @@
+# ==========================================
+# 6. ANALIZAR PROYECTO (MÉTRICAS Y DATOS PARA GRÁFICAS)
+# ==========================================
+@app.route("/analizar-proyecto", methods=["POST"])
+def analizar_proyecto():
+    try:
+        data = request.get_json() or {}
+        instancia_id = data.get("instancia_id")
+        proyecto_id = data.get("proyecto_id")
+        
+        dataset = dataiku.Dataset(DATASET_NAME)
+        df = dataset.get_dataframe()
+        fila = df[df["id"] == int(instancia_id)]
+        
+        if fila.empty:
+            return jsonify({"status": "error", "message": "Instancia no encontrada"}), 404
+            
+        url = fila.iloc[0]["url"]
+        api_key = fila.iloc[0]["api_key"]
+        
+        client = dataikuapi.DSSClient(url, api_key)
+        client._session.verify = False
+        
+        proyectos = client.list_projects()
+        info_proyecto = next((p for p in proyectos if p['projectKey'] == proyecto_id), {})
+        
+        project = client.get_project(proyecto_id)
+        
+        last_mod_ms = info_proyecto.get('versionTag', {}).get('lastModifiedOn', 0)
+        last_mod_str = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0).strftime('%Y-%m-%d') if last_mod_ms else "-"
+        owner_login = info_proyecto.get('ownerLogin', 'Admin')
+        
+        num_datasets = len(project.list_datasets())
+        num_recipes = len(project.list_recipes())
+        num_scenarios = len(project.list_scenarios())
+        num_jobs = len(project.list_jobs())
+        
+        metricas = {
+            "jobs_ejecutados": num_jobs, 
+            "total_datasets": num_datasets,
+            "ultima_modificacion": last_mod_str,
+            "propietario": owner_login,
+            "escenarios_ejecutados": num_scenarios
+        }
+
+        # DATOS PARA LAS GRÁFICAS EN CSS/JS
+        graficas = {
+            "tendencia": {
+                "etiquetas": ['M-4', 'M-3', 'M-2', 'M-1', 'Actual'],
+                "valores": [num_jobs, int(num_jobs*0.5), 0, 0, 0] # Simulado
+            },
+            "estructura": {
+                "etiquetas": ['Datasets', 'Recetas', 'Escenarios'],
+                "valores": [num_datasets, num_recipes, num_scenarios] # Reales
+            }
+        }
+
+        return jsonify({
+            "status": "ok", 
+            "metricas": metricas,
+            "datos_graficas": graficas
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Contenedor para las gráficas Nativas (CSS/JS) -->
+<div class="charts-container text-center">
+  <div id="mensaje-grafica-vacia">Esperando selección...</div>
+  
+  <div id="css-charts-wrapper" class="hidden">
+    <!-- Gráfica 1: Barras Verticales -->
+    <div class="chart-box">
+      <h4>Tendencia de Jobs</h4>
+      <div id="chart-vertical" class="css-chart-vertical"></div>
+    </div>
+    
+    <!-- Gráfica 2: Barras Horizontales -->
+    <div class="chart-box">
+      <h4>Estructura del Proyecto</h4>
+      <div id="chart-horizontal" class="css-chart-horizontal"></div>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ==========================================
+   10. GRÁFICAS NATIVAS CON CSS
+   ========================================== */
+#css-charts-wrapper {
+  display: flex;
+  width: 100%;
+  gap: 20px;
+  justify-content: space-between;
+}
+
+.chart-box {
+  flex: 1;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.chart-box h4 {
+  font-size: 13px;
+  color: var(--text-dark);
+  margin-bottom: 15px;
+}
+
+/* Gráfica Vertical */
+.css-chart-vertical {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  height: 140px;
+  border-bottom: 1px solid #ccc;
+  border-left: 1px solid #ccc;
+  padding: 5px 0 0 5px;
+}
+
+.v-bar-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  width: 15%;
+}
+
+.v-bar {
+  background-color: #178096;
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  transition: height 0.5s ease;
+}
+
+.v-label {
+  font-size: 10px;
+  margin-top: 5px;
+  color: #555;
+}
+
+/* Gráfica Horizontal */
+.css-chart-horizontal {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  height: 140px;
+  border-left: 1px solid #ccc;
+  border-bottom: 1px solid #ccc;
+  padding: 5px;
+}
+
+.h-bar-container {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.h-label {
+  width: 60px;
+  font-size: 10px;
+  color: #555;
+  text-align: right;
+  padding-right: 8px;
+}
+
+.h-bar {
+  background-color: #ff6b00;
+  height: 15px;
+  border-radius: 0 3px 3px 0;
+  transition: width 0.5s ease;
+}
+
+.h-val {
+  font-size: 10px;
+  margin-left: 5px;
+  font-weight: bold;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
+  $("#titulo-proyecto-seleccionado").text(nombreProyecto);
+  
+  // Mostrar mensaje de carga
+  $("#css-charts-wrapper").addClass("hidden");
+  $("#mensaje-grafica-vacia").removeClass("hidden").text("Calculando métricas...");
+  
+  $("#metric-jobs, #metric-datasets, #metric-scenarios, #metric-last-mod, #metric-users").text("...");
+
+  const payload = { instancia_id: idInstancia, proyecto_id: idProyecto };
+
+  $.ajax({
+    url: getWebAppBackendUrl("/analizar-proyecto"),
+    type: "POST",
+    contentType: "application/json",
+    data: JSON.stringify(payload),
+    success: function (response) {
+      if (response.status === "ok") {
+        $("#mensaje-grafica-vacia").addClass("hidden");
+        $("#css-charts-wrapper").removeClass("hidden");
+
+        // 1. DIBUJAR GRÁFICAS CSS
+        renderizarGraficasCSS(response.datos_graficas);
+
+        // 2. ACTUALIZAR MÉTRICAS DE TEXTO
+        const m = response.metricas;
+        $("#metric-jobs").text(m.jobs_ejecutados);
+        $("#metric-datasets").text(m.total_datasets);
+        $("#metric-last-mod").text(m.ultima_modificacion);
+        $("#metric-users").text(m.propietario);
+        $("#metric-scenarios").text(m.escenarios_ejecutados);
+      } else {
+        $("#mensaje-grafica-vacia").removeClass("hidden").text("Error: " + response.message);
+      }
+    },
+    error: function (err) {
+      $("#mensaje-grafica-vacia").removeClass("hidden").text("Error en la solicitud.");
+    }
+  });
+}
+
+// Función auxiliar para dibujar las barras
+function renderizarGraficasCSS(datosGraficas) {
+  // Gráfica Vertical (Tendencia)
+  const vContainer = $("#chart-vertical");
+  vContainer.empty();
+  const vData = datosGraficas.tendencia;
+  const vMax = Math.max(...vData.valores, 1); // Evitar división por cero
+
+  vData.valores.forEach((val, i) => {
+    const heightPct = (val / vMax) * 100;
+    vContainer.append(`
+      <div class="v-bar-container" title="Valor: ${val}">
+        <div class="v-bar" style="height: ${heightPct}%"></div>
+        <div class="v-label">${vData.etiquetas[i]}</div>
+      </div>
+    `);
+  });
+
+  // Gráfica Horizontal (Estructura)
+  const hContainer = $("#chart-horizontal");
+  hContainer.empty();
+  const hData = datosGraficas.estructura;
+  const hMax = Math.max(...hData.valores, 1);
+
+  hData.valores.forEach((val, i) => {
+    const widthPct = (val / hMax) * 80; // 80% máximo para dejar espacio al número
+    hContainer.append(`
+      <div class="h-bar-container">
+        <div class="h-label">${hData.etiquetas[i]}</div>
+        <div class="h-bar" style="width: ${widthPct}%"></div>
+        <div class="h-val">${val}</div>
+      </div>
+    `);
+  });
+}
