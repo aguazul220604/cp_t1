@@ -1,4 +1,3 @@
-// Guarda el último resultado del análisis para poder generar el CSV después
 let currentColumnsAnalysis = [];
 
 document
@@ -10,17 +9,17 @@ document
 
 function handleProcessClick() {
   const fileInput = document.getElementById("datasetFile");
-  const file = fileInput.files[0];
+  const files = fileInput.files;
 
   hideError();
 
-  if (!file) {
-    showError("Por favor, selecciona un archivo CSV o Excel.");
+  if (!files || files.length === 0) {
+    showError("Por favor, selecciona uno o más archivos CSV o Excel.");
     return;
   }
 
   const formData = new FormData();
-  formData.append("file", file);
+  Array.from(files).forEach((file) => formData.append("file", file));
 
   document.getElementById("loadingSpinner").style.display = "flex";
 
@@ -36,12 +35,16 @@ function handleProcessClick() {
 
       if (!ok || data.status !== "success") {
         throw new Error(
-          data.message || "Error desconocido al procesar la tabla.",
+          data.message || "Error desconocido al procesar las tablas.",
         );
       }
 
       currentColumnsAnalysis = data.columns_analysis || [];
       renderSummary(currentColumnsAnalysis);
+
+      if (data.warnings && data.warnings.length) {
+        showWarning(data.warnings.join(" | "));
+      }
 
       document.getElementById("piiSummarySection").style.display = "block";
     })
@@ -51,7 +54,6 @@ function handleProcessClick() {
     });
 }
 
-// Genera las filas del listado, resaltando en rojo las columnas PII
 function renderSummary(columns) {
   const tbody = document.getElementById("piiListBody");
   tbody.innerHTML = "";
@@ -61,11 +63,10 @@ function renderSummary(columns) {
     const isPii = col.is_pii;
 
     const tr = document.createElement("tr");
-    if (isPii) {
-      tr.classList.add("pii-row");
-    }
+    if (isPii) tr.classList.add("pii-row");
 
     tr.innerHTML = `
+      <td>${escapeHtml(col.source_file || "")}</td>
       <td>${escapeHtml(col.name)}</td>
       <td>
         <span class="status-badge ${isPii ? "danger" : "success"}">
@@ -78,22 +79,26 @@ function renderSummary(columns) {
   });
 }
 
-// Construye y descarga el CSV a partir de lo que ya está en pantalla
 function handleGenerateCsvClick() {
   if (!currentColumnsAnalysis.length) {
-    showError("Primero analiza una tabla antes de generar el CSV.");
+    showError("Primero analiza al menos una tabla antes de generar el CSV.");
     return;
   }
 
-  const header = ["Nombre de Columna", "Prediccion", "Probabilidad PII (%)"];
+  const header = [
+    "Archivo",
+    "Nombre de Columna",
+    "Prediccion",
+    "Probabilidad PII (%)",
+  ];
   const rows = currentColumnsAnalysis.map((col) => [
+    col.source_file || "",
     col.name,
     col.is_pii ? "PII" : "NO PII",
     (col.pii_probability * 100).toFixed(2),
   ]);
 
   const csvContent = [header, ...rows].map(toCsvRow).join("\r\n");
-
   downloadCsv(csvContent, "analisis_pii.csv");
 }
 
@@ -109,31 +114,35 @@ function toCsvRow(fields) {
 }
 
 function downloadCsv(csvContent, filename) {
-  // El BOM (\ufeff) evita que Excel muestre mal los acentos al abrir el CSV
   const blob = new Blob(["\ufeff" + csvContent], {
     type: "text/csv;charset=utf-8;",
   });
   const url = URL.createObjectURL(blob);
-
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-
   URL.revokeObjectURL(url);
 }
 
 function showError(message) {
-  const errorEl = document.getElementById("uploadError");
-  errorEl.textContent = message;
-  errorEl.style.display = "block";
+  const el = document.getElementById("uploadError");
+  el.textContent = message;
+  el.className = "error-text";
+  el.style.display = "block";
+}
+
+function showWarning(message) {
+  const el = document.getElementById("uploadError");
+  el.textContent = message;
+  el.className = "warning-text";
+  el.style.display = "block";
 }
 
 function hideError() {
-  const errorEl = document.getElementById("uploadError");
-  errorEl.style.display = "none";
+  document.getElementById("uploadError").style.display = "none";
 }
 
 function escapeHtml(str) {

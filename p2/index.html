@@ -22,7 +22,7 @@
       <section class="card">
         <h3 class="card-title">1. Cargar Dataset o Tabla</h3>
         <div class="upload-box">
-          <input type="file" id="datasetFile" accept=".csv, .xlsx" />
+          <input type="file" id="datasetFile" accept=".csv, .xlsx" multiple />
           <button id="btnProcess" class="btn-banamex">Analizar PII</button>
         </div>
         <p id="uploadError" class="error-text" style="display: none"></p>
@@ -35,6 +35,7 @@
           <table id="piiTable">
             <thead>
               <tr>
+                <th>Archivo</th>
                 <th>Nombre de Columna</th>
                 <th>Predicción</th>
                 <th>Probabilidad PII</th>

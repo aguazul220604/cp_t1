@@ -225,3 +225,9 @@ input[type="file"] {
     transform: rotate(360deg);
   }
 }
+
+.warning-text {
+  margin: 12px 0 0 0;
+  color: #8a6d00;
+  font-size: 13px;
+}
