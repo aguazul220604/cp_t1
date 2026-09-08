@@ -2,11 +2,6 @@ import dataiku
 import pandas as pd
 from flask import request, jsonify
 
-# --- CONFIGURACIÓN ---
-import matplotlib
-matplotlib.use('Agg') # Evita errores de renderizado en hilos del servidor
-import matplotlib.pyplot as plt
-
 DATASET_NAME = "instances"
 
 # ==========================================
@@ -299,3 +294,66 @@ def analizar_proyecto():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+    
+
+# ==========================================
+# 7. EJECUTAR LIMPIEZA / BORRADO DE PROYECTOS
+# ==========================================
+@app.route("/ejecutar-limpieza", methods=["POST"])
+def ejecutar_limpieza():
+    try:
+        data = request.get_json() or {}
+        proyectos_a_limpiar = data.get("proyectos_a_limpiar", [])
+        
+        if not proyectos_a_limpiar:
+            return jsonify({"status": "ok", "message": "No hay proyectos pendientes por limpiar.", "exitosos": 0, "fallidos": 0})
+
+        dataset = dataiku.Dataset(DATASET_NAME)
+        df = dataset.get_dataframe()
+        
+        exitosos = 0
+        fallidos = 0
+        detalles = []
+
+        for item in proyectos_a_limpiar:
+            instancia_id = item.get("instancia_id")
+            proyecto_id = item.get("proyecto_id")
+            
+            fila = df[df["id"] == int(instancia_id)]
+            if fila.empty:
+                fallidos += 1
+                detalles.append({"proyecto_id": proyecto_id, "status": "error", "message": "Instancia no encontrada"})
+                continue
+                
+            url = fila.iloc[0]["url"]
+            api_key = fila.iloc[0]["api_key"]
+            nombre_inst = fila.iloc[0]["nombre"]
+            
+            try:
+                client = dataikuapi.DSSClient(url, api_key)
+                client._session.verify = False
+                
+                # Obtener el proyecto y ejecutar borrado profundo según los parámetros requeridos
+                project = client.get_project(proyecto_id)
+                project.delete(
+                    clear_managed_datasets=True,
+                    clear_output_managed_folders=True,
+                    clear_job_and_scenario_logs=True
+                )
+                exitosos += 1
+                detalles.append({"proyecto_id": proyecto_id, "instancia": nombre_inst, "status": "eliminado"})
+            except Exception as ex:
+                fallidos += 1
+                detalles.append({"proyecto_id": proyecto_id, "instancia": nombre_inst, "status": "error", "message": str(ex)})
+
+        return jsonify({
+            "status": "ok",
+            "exitosos": exitosos,
+            "fallidos": fallidos,
+            "detalles": detalles
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+

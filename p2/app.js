@@ -1,326 +1,183 @@
-/* ==========================================
-ESTADO DE LA APLICACIÓN 
-   ========================================== */
-let proyectosData = {
-  "Instancia DEV 1": [
-    {
-      id: "DEV1_P1",
-      nombre: "Proyecto 1",
-      jobs: 12,
-      ultima_ejec: "2026-01-02",
-      ultima_mod: "2025-12-15",
-      usuarios: 3,
-      escenarios: 5,
-      actividad: [13, 21, 5, 19, 10],
-    },
-    {
-      id: "DEV1_P2",
-      nombre: "Proyecto 2",
-      jobs: 0,
-      ultima_ejec: "2025-10-10",
-      ultima_mod: "2025-09-01",
-      usuarios: 1,
-      escenarios: 0,
-      actividad: [5, 2, 0, 0, 0],
-    },
-    {
-      id: "DEV1_P3",
-      nombre: "Proyecto 3",
-      jobs: 45,
-      ultima_ejec: "2026-02-15",
-      ultima_mod: "2026-02-10",
-      usuarios: 5,
-      escenarios: 12,
-      actividad: [20, 15, 30, 25, 40],
-    },
-  ],
-  "Instancia DEV 2": [
-    {
-      id: "DEV2_P1",
-      nombre: "Proyecto Alpha",
-      jobs: 2,
-      ultima_ejec: "2025-08-20",
-      ultima_mod: "2025-08-15",
-      usuarios: 2,
-      escenarios: 1,
-      actividad: [1, 0, 2, 0, 0],
-    },
-  ],
-};
+// Variable global para almacenar el dataset procesado y la metadata
+let processedData = null;
 
-let proyectosPreservados = {};
-let proyectoSeleccionadoActual = null;
-let instanciaSeleccionadaActual = null;
+$(document).ready(function () {
+  // 1. Manejador del evento Clic en "Analizar PII"
+  $("#btnProcess").on("click", function () {
+    const fileInput = document.getElementById("datasetFile");
+    const file = fileInput.files[0];
 
-// Variables para destruir gráficas previas de Chart.js
-let chartActividad = null;
-let chartDistribucion = null;
+    if (!file) {
+      alert("Por favor, selecciona un archivo CSV o Excel primero.");
+      return;
+    }
 
-/* ==========================================
-   INICIALIZACIÓN Y RENDERIZADO
-   ========================================== */
-document.addEventListener("DOMContentLoaded", () => {
-  // Asignar eventos de escucha
-  const btnPreservar = document.getElementById("btn-conservar-proyecto");
-  const btnLimpiar = document.getElementById("btn-autorizar-limpieza");
+    // Crear FormData para enviar el archivo al Backend de Dataiku
+    const formData = new FormData();
+    formData.append("file", file);
 
-  if (btnPreservar) btnPreservar.addEventListener("click", preservarProyecto);
-  if (btnLimpiar) btnLimpiar.addEventListener("click", confirmarLimpieza);
+    // Mostrar pantalla de carga
+    $("#loadingSpinner").css("display", "flex");
 
-  if (typeof dataiku !== "undefined" && dataiku.fetch) {
-    dataiku
-      .fetch("get_proyectos", { method: "GET" })
+    // Petición AJAX al Backend (Flask Endpoint en Dataiku)
+    fetch(getWebAppBackendUrl("process_table"), {
+      method: "POST",
+      body: formData,
+    })
       .then((response) => {
-        if (!response.ok)
-          throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response.ok) {
+          throw new Error("Error en el servidor al procesar la tabla.");
+        }
         return response.json();
       })
       .then((data) => {
-        proyectosData = data;
-        renderizarColumnaIzquierda();
+        $("#loadingSpinner").hide();
+        processedData = data; // Guardar datos globalmente
+
+        // Renderizar vistas
+        renderPIISummaryTable(data.columns_analysis);
+        renderDataPreviewTable(data.columns_analysis, data.sample_rows);
+
+        // Mostrar secciones en la UI
+        $("#piiSummarySection").fadeIn();
+        $("#tablePreviewSection").fadeIn();
       })
       .catch((error) => {
-        console.error(
-          "Error cargando proyectos desde backend, usando mock data:",
-          error,
-        );
-        renderizarColumnaIzquierda();
+        $("#loadingSpinner").hide();
+        alert("Ocurrió un error: " + error.message);
+        console.error("Error:", error);
       });
-  } else {
-    renderizarColumnaIzquierda();
-  }
+  });
 
-  renderizarColumnaDerecha();
+  // 2. Manejador para Guardar la Confirmación de PII (Retroalimentación)
+  $("#btnSaveFeedback").on("click", function () {
+    if (!processedData) return;
+
+    // Recopilar las selecciones manuales del usuario (Checkboxes)
+    const userFeedback = [];
+    $("#piiListBody tr").each(function () {
+      const colName = $(this).find(".pii-checkbox").data("col-name");
+      const isPiiUserConfirmed = $(this).find(".pii-checkbox").is(":checked");
+      const probability = $(this).find(".pii-checkbox").data("probability");
+
+      userFeedback.push({
+        column_name: colName,
+        user_confirmed_pii: isPiiUserConfirmed,
+        model_probability: probability,
+      });
+    });
+
+    $("#loadingSpinner").css("display", "flex");
+
+    // Enviar la confirmación al Backend para re-entrenamiento
+    fetch(getWebAppBackendUrl("save_feedback"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ feedback: userFeedback }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        $("#loadingSpinner").hide();
+        if (data.status === "success") {
+          alert(
+            "¡Confirmación guardada exitosamente! Estos datos servirán para robustecer el modelo LightGBM.",
+          );
+        } else {
+          alert("Error al guardar: " + data.message);
+        }
+      })
+      .catch((error) => {
+        $("#loadingSpinner").hide();
+        alert("Error al enviar la confirmación: " + error.message);
+      });
+  });
 });
 
-function renderizarColumnaIzquierda() {
-  const contenedor = document.getElementById("lista-instancias-container");
-  if (!contenedor) return;
-  contenedor.innerHTML = "";
+// -------------------------------------------------------------
+// FUNCIONES AUXILIARES PARA RENDERIZAR INTERFAZ
+// -------------------------------------------------------------
 
-  for (const [instancia, proyectos] of Object.entries(proyectosData)) {
-    if (!proyectos || proyectos.length === 0) continue;
+// Función A: Renderizar la lista de columnas con sus porcentajes PII
+function renderPIISummaryTable(columnsAnalysis) {
+  const $tbody = $("#piiListBody");
+  $tbody.empty();
 
-    const divInstancia = document.createElement("div");
-    divInstancia.className = "instance-group";
+  columnsAnalysis.forEach((col) => {
+    const isPII = col.is_pii;
+    const probabilityPct = (col.pii_probability * 100).toFixed(2);
 
-    const titulo = document.createElement("h3");
-    titulo.className = "instance-name";
-    titulo.textContent = instancia;
-    divInstancia.appendChild(titulo);
+    // Checkbox marcado por defecto si el modelo detectó PII
+    const checkedAttr = isPII ? "checked" : "";
+    const badgeClass = isPII ? "bg-danger" : "bg-success";
+    const badgeText = isPII ? "POTENCIAL PII" : "No PII";
 
-    proyectos.forEach((proyecto) => {
-      const btn = document.createElement("button");
-      btn.className = "btn-project";
-      btn.textContent = proyecto.nombre;
-
-      if (
-        proyectoSeleccionadoActual &&
-        proyectoSeleccionadoActual.id === proyecto.id
-      ) {
-        btn.classList.add("active");
-      }
-
-      btn.addEventListener("click", () =>
-        seleccionarProyecto(instancia, proyecto),
-      );
-      divInstancia.appendChild(btn);
-    });
-
-    contenedor.appendChild(divInstancia);
-  }
+    const rowHtml = `
+            <tr>
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input pii-checkbox" style="transform: scale(1.3);" 
+                           data-col-name="${col.name}" 
+                           data-probability="${col.pii_probability}" ${checkedAttr}>
+                </td>
+                <td><strong>${col.name}</strong></td>
+                <td class="text-muted">${col.description || "Sin descripción"}</td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <div class="progress flex-grow-1 me-2" style="height: 18px;">
+                            <div class="progress-bar ${isPII ? "bg-danger" : "bg-info"}" 
+                                 role="progressbar" 
+                                 style="width: ${probabilityPct}%;">
+                                 ${probabilityPct}%
+                            </div>
+                        </div>
+                    </div>
+                </td>
+                <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+            </tr>
+        `;
+    $tbody.append(rowHtml);
+  });
 }
 
-function renderizarColumnaDerecha() {
-  const contenedor = document.getElementById("lista-preservados-container");
-  if (!contenedor) return;
-  contenedor.innerHTML = "";
+// Función B: Renderizar la vista previa de la tabla resaltando columnas PII en ROJO
+function renderDataPreviewTable(columnsAnalysis, sampleRows) {
+  const $thead = $("#previewThead");
+  const $tbody = $("#previewTbody");
 
-  for (const [instancia, proyectos] of Object.entries(proyectosPreservados)) {
-    proyectos.forEach((proyecto) => {
-      const item = document.createElement("div");
-      item.className = "preserved-item";
-      item.innerHTML = `
-        <div class="preserved-info">
-            <span class="preserved-instance">${instancia}</span>
-            <span class="preserved-project">${proyecto.nombre}</span>
-        </div>
-        <button class="btn btn-action btn-revertir" onclick="revertirProyecto('${instancia}', '${proyecto.id}')">Revertir</button>
-      `;
-      contenedor.appendChild(item);
-    });
-  }
-}
+  $thead.empty();
+  $tbody.empty();
 
-/* ==========================================
-   LÓGICA DE SELECCIÓN Y GRÁFICAS
-   ========================================== */
-function seleccionarProyecto(instancia, proyecto) {
-  proyectoSeleccionadoActual = proyecto;
-  instanciaSeleccionadaActual = instancia;
-
-  renderizarColumnaIzquierda();
-
-  document.getElementById("detalle-instancia-titulo").textContent = instancia;
-  document.getElementById("detalle-proyecto-titulo").textContent =
-    proyecto.nombre;
-
-  document.getElementById("metric-jobs").textContent = proyecto.jobs;
-  document.getElementById("metric-last-exec").textContent =
-    proyecto.ultima_ejec;
-  document.getElementById("metric-last-mod").textContent = proyecto.ultima_mod;
-  document.getElementById("metric-users").textContent = proyecto.usuarios;
-  document.getElementById("metric-scenarios").textContent = proyecto.escenarios;
-
-  dibujarGraficas(proyecto.actividad);
-}
-
-function dibujarGraficas(datos) {
-  const labels = ["Clase 1", "Clase 2", "Clase 3", "Clase 4", "Clase 5"];
-
-  if (chartActividad) chartActividad.destroy();
-  if (chartDistribucion) chartDistribucion.destroy();
-
-  const canvasBarras = document.getElementById("canvas-barras");
-  if (canvasBarras) {
-    const ctxBarras = canvasBarras.getContext("2d");
-    chartActividad = new Chart(ctxBarras, {
-      type: "bar",
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: "Actividad",
-            data: datos,
-            backgroundColor: "#6b8e23",
-          },
-        ],
-      },
-      options: { responsive: true, maintainAspectRatio: false },
-    });
-  }
-
-  const canvasDist = document.getElementById("canvas-distribucion");
-  if (canvasDist) {
-    const ctxDist = canvasDist.getContext("2d");
-    chartDistribucion = new Chart(ctxDist, {
-      type: "bar",
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: "Distribución",
-            data: datos,
-            backgroundColor: "#a52a2a",
-          },
-        ],
-      },
-      options: {
-        indexAxis: "y",
-        responsive: true,
-        maintainAspectRatio: false,
-      },
-    });
-  }
-}
-
-/* ==========================================
-   MOVER PROYECTOS
-   ========================================== */
-function preservarProyecto() {
-  if (!proyectoSeleccionadoActual) return;
-
-  // Remover de la lista original
-  proyectosData[instanciaSeleccionadaActual] = proyectosData[
-    instanciaSeleccionadaActual
-  ].filter((p) => p.id !== proyectoSeleccionadoActual.id);
-
-  // Agregar a preservados
-  if (!proyectosPreservados[instanciaSeleccionadaActual]) {
-    proyectosPreservados[instanciaSeleccionadaActual] = [];
-  }
-  proyectosPreservados[instanciaSeleccionadaActual].push(
-    proyectoSeleccionadoActual,
+  // Identificar qué columnas son PII
+  const piiColumnsSet = new Set(
+    columnsAnalysis.filter((c) => c.is_pii).map((c) => c.name),
   );
 
-  // Resetear selección
-  proyectoSeleccionadoActual = null;
-  instanciaSeleccionadaActual = null;
+  // 1. Construir Cabecera (Thead)
+  let headerHtml = "<tr>";
+  columnsAnalysis.forEach((col) => {
+    const isPiiCol = piiColumnsSet.has(col.name);
+    // Si es PII aplica la clase CSS roja (.pii-column-header)
+    const headerClass = isPiiCol ? "pii-column-header" : "table-secondary";
+    const icon = isPiiCol ? '<i class="fa-solid fa-lock me-1"></i>' : "";
 
-  // Resetear interfaz
-  document.getElementById("detalle-proyecto-titulo").textContent =
-    "Seleccione un proyecto";
-  document.getElementById("detalle-instancia-titulo").textContent = "-";
+    headerHtml += `<th class="${headerClass}">${icon}${col.name}</th>`;
+  });
+  headerHtml += "</tr>";
+  $thead.append(headerHtml);
 
-  // Limpiar métricas
-  document.getElementById("metric-jobs").textContent = "-";
-  document.getElementById("metric-last-exec").textContent = "-";
-  document.getElementById("metric-last-mod").textContent = "-";
-  document.getElementById("metric-users").textContent = "-";
-  document.getElementById("metric-scenarios").textContent = "-";
+  // 2. Construir Filas de Muestra (Tbody)
+  sampleRows.forEach((row) => {
+    let rowHtml = "<tr>";
+    columnsAnalysis.forEach((col) => {
+      const isPiiCol = piiColumnsSet.has(col.name);
+      const val = row[col.name] !== undefined ? row[col.name] : "";
+      // Si la columna es PII aplica el fondo rojo suave (.pii-cell)
+      const cellClass = isPiiCol ? "pii-cell fw-bold text-danger" : "";
 
-  if (chartActividad) chartActividad.destroy();
-  if (chartDistribucion) chartDistribucion.destroy();
-
-  renderizarColumnaIzquierda();
-  renderizarColumnaDerecha();
-}
-
-window.revertirProyecto = function (instancia, proyectoId) {
-  if (!proyectosPreservados[instancia]) return;
-
-  const proyectoIndex = proyectosPreservados[instancia].findIndex(
-    (p) => p.id === proyectoId,
-  );
-
-  if (proyectoIndex === -1) return;
-
-  const proyecto = proyectosPreservados[instancia][proyectoIndex];
-
-  proyectosPreservados[instancia].splice(proyectoIndex, 1);
-  if (proyectosPreservados[instancia].length === 0) {
-    delete proyectosPreservados[instancia];
-  }
-
-  if (!proyectosData[instancia]) proyectosData[instancia] = [];
-  proyectosData[instancia].push(proyecto);
-
-  renderizarColumnaIzquierda();
-  renderizarColumnaDerecha();
-};
-
-/* ==========================================
-   ENVIAR AL BACKEND 
-   ========================================== */
-function confirmarLimpieza() {
-  if (
-    confirm(
-      "¿Estás seguro de que deseas limpiar y borrar los proyectos restantes?",
-    )
-  ) {
-    if (typeof dataiku !== "undefined" && dataiku.fetch) {
-      dataiku
-        .fetch("ejecutar_limpieza", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(proyectosData),
-        })
-        .then((response) => {
-          if (!response.ok) throw new Error("Error en la solicitud");
-          return response.json();
-        })
-        .then((result) => {
-          alert(
-            `Se limpiaron exitosamente ${result.total_procesados || 0} proyectos.`,
-          );
-          location.reload();
-        })
-        .catch((error) => {
-          console.error("Error al ejecutar limpieza:", error);
-          alert("Ocurrió un error al limpiar los proyectos.");
-        });
-    } else {
-      console.warn("Entorno de Dataiku no detectado.");
-    }
-  }
+      rowHtml += `<td class="${cellClass}">${val}</td>`;
+    });
+    rowHtml += "</tr>";
+    $tbody.append(rowHtml);
+  });
 }

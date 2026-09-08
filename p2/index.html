@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Detector de Datos PII - Banamex</title>
+    <!-- Bootstrap 5 CSS para diseño profesional -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <!-- FontAwesome para iconos -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
+
+    <style>
+      body {
+        background-color: #f8f9fa;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        color: #333;
+      }
+      .header-banamex {
+        background: linear-gradient(90deg, #002d62 0%, #0056b3 100%);
+        color: white;
+        padding: 20px 0;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      .card-custom {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        background: white;
+        margin-bottom: 20px;
+      }
+      .pii-column-header {
+        background-color: #dc3545 !important;
+        color: white !important;
+        font-weight: bold;
+      }
+      .pii-cell {
+        background-color: #f8d7da !important;
+        border-color: #f5c6cb !important;
+      }
+      .badge-pii {
+        background-color: #dc3545;
+        font-size: 0.9em;
+      }
+      .table-responsive {
+        max-height: 450px;
+        overflow-y: auto;
+      }
+      .btn-banamex {
+        background-color: #002d62;
+        color: white;
+      }
+      .btn-banamex:hover {
+        background-color: #001f44;
+        color: white;
+      }
+      .spinner-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.8);
+        z-index: 9999;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Pantalla de Carga -->
+    <div id="loadingSpinner" class="spinner-overlay">
+      <div class="text-center">
+        <div
+          class="spinner-border text-primary"
+          style="width: 3rem; height: 3rem"
+          role="status"
+        ></div>
+        <h5 class="mt-3 text-secondary">
+          Analizando tabla y ejecutando modelo LightGBM...
+        </h5>
+      </div>
+    </div>
+
+    <!-- Encabezado -->
+    <div class="header-banamex">
+      <div class="container-fluid px-4">
+        <div class="d-flex align-items-center justify-content-between">
+          <h2>
+            <i class="fa-solid fa-user-shield me-2"></i> Detección e
+            Identificación de Datos PII
+          </h2>
+          <span class="badge bg-light text-dark p-2"
+            >Banamex Data Governance</span
+          >
+        </div>
+      </div>
+    </div>
+
+    <div class="container-fluid px-4">
+      <!-- Sección 1: Carga de Archivo / Selección de Dataset -->
+      <div class="card card-custom p-4">
+        <h5 class="card-title text-primary">
+          <i class="fa-solid fa-file-csv me-2"></i>1. Cargar Dataset o Tabla
+        </h5>
+        <div class="row align-items-center mt-3">
+          <div class="col-md-8">
+            <input
+              class="form-control form-control-lg"
+              type="file"
+              id="datasetFile"
+              accept=".csv, .xlsx"
+            />
+          </div>
+          <div class="col-md-4">
+            <button id="btnProcess" class="btn btn-banamex btn-lg w-100">
+              <i class="fa-solid fa-microchip me-2"></i>Analizar PII
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sección 2: Resumen de Columnas PII Detectadas -->
+      <div
+        id="piiSummarySection"
+        class="card card-custom p-4"
+        style="display: none"
+      >
+        <h5 class="card-title text-danger">
+          <i class="fa-solid fa-triangle-exclamation me-2"></i>2. Columnas PII
+          Detectadas y Probabilidades
+        </h5>
+        <p class="text-muted small">
+          Revisa los porcentajes calculados por el modelo LightGBM y confirma
+          manualmente cuáles corresponden verdaderamente a PII.
+        </p>
+
+        <div class="table-responsive mt-2">
+          <table class="table table-hover align-middle" id="piiListTable">
+            <thead class="table-dark">
+              <tr>
+                <th text-align="center">Confirmar PII</th>
+                <th>Nombre de Columna</th>
+                <th>Descripción</th>
+                <th>Probabilidad PII (%)</th>
+                <th>Estado Predicción</th>
+              </tr>
+            </thead>
+            <tbody id="piiListBody">
+              <!-- Se llena dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex justify-content-end mt-3">
+          <button id="btnSaveFeedback" class="btn btn-success btn-lg">
+            <i class="fa-solid fa-floppy-disk me-2"></i>Guardar Confirmación
+            para Re-entrenamiento
+          </button>
+        </div>
+      </div>
+
+      <!-- Sección 3: Vista Previa de la Tabla con Columnas PII Resaltadas -->
+      <div
+        id="tablePreviewSection"
+        class="card card-custom p-4"
+        style="display: none"
+      >
+        <h5 class="card-title text-secondary">
+          <i class="fa-solid fa-table me-2"></i>3. Vista Previa de la Tabla
+          (Columnas PII en Rojo)
+        </h5>
+        <div class="table-responsive mt-3">
+          <table
+            class="table table-bordered table-striped"
+            id="dataPreviewTable"
+          >
+            <thead id="previewThead">
+              <!-- Cabeceras dinámicas -->
+            </thead>
+            <tbody id="previewTbody">
+              <!-- Muestra de datos dinámicos -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts de soporte JS -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
