@@ -2,7 +2,7 @@ import dataiku
 import pandas as pd
 from flask import request, jsonify
 
-# 1. Cargar el modelo guardado en el flujo de Dataiku
+# 1. Cargar el modelo guardado
 model = dataiku.Model("PII_PREDICT_MODEL")
 predictor = model.get_predictor()
 
@@ -15,7 +15,7 @@ def process_table():
         file = request.files['file']
         filename = file.filename.lower()
 
-        # 2. Lectura del archivo enviado desde el frontend
+        # 2. Leer archivo subido
         if filename.endswith('.csv'):
             df = pd.read_csv(file)
         elif filename.endswith(('.xls', '.xlsx')):
@@ -23,33 +23,41 @@ def process_table():
         else:
             return jsonify({"status": "error", "message": "Formato no soportado (solo CSV/Excel)"}), 400
 
-        # 3. Construir el DataFrame de entrada EXACTAMENTE como en tu Notebook
+        # 3. Construir lista con los 18 campos del esquema que requiere el pipeline
         features_list = []
         for col_name in df.columns:
-            # Limpiamos el nombre de la columna para simular la metadata
-            # Ej: "NOMBRE_BENEFICIARIO" -> "nombre beneficiario"
-            texto_comp = str(col_name).replace("_", " ").lower()
-            
-            # Pasamos ÚNICAMENTE la variable con la que entrenaste
+            col_str = str(col_name)
+            # Limpiamos el texto para que el vectorizador TF-IDF haga match
+            texto_comp = col_str.replace("_", " ").strip().lower()
+
             features_list.append({
-                "texto_completo": texto_comp
+                "Grupo técnico": "FRONTEND_UPLOAD",
+                "Conjunto de datos": str(filename),
+                "Nombre": col_str,
+                "Tipo nativo": str(df[col_name].dtype),
+                "Descripción": col_str,
+                "texto_completo": texto_comp,  # Variable principal de entrenamiento
+                "PII Indicator": "false",
+                "Acepta valores Null": "False",
+                "PII_Indicator_clean": "FALSE",
+                "target": 0
             })
 
         df_features = pd.DataFrame(features_list)
 
-        # 4. Ejecutar predicción
+        # 4. Inferencia con LightGBM
         predictions = predictor.predict(df_features)
 
-        # 5. Mapear resultados para la interfaz
+        # 5. Procesar los resultados fila por fila
         columns_analysis = []
         for i, col_name in enumerate(df.columns):
             row_pred = predictions.iloc[i]
             
-            # Obtener la predicción binaria (0 o 1)
+            # Obtener predicción binaria
             pred_val = row_pred.get('prediction', 0)
             is_pii = True if str(pred_val).lower() in ['1', 'true'] else False
 
-            # Extraer probabilidad
+            # Extracción segura de la probabilidad
             prob_pii = 0.5
             if 'proba_1' in predictions.columns:
                 prob_pii = float(row_pred['proba_1'])
@@ -60,12 +68,12 @@ def process_table():
 
             columns_analysis.append({
                 "name": str(col_name),
-                "description": f"Evaluado mediante NLP como: '{df_features.iloc[i]['texto_completo']}'",
+                "description": f"Texto evaluado: '{df_features.iloc[i]['texto_completo']}'",
                 "is_pii": is_pii,
                 "pii_probability": round(prob_pii, 4)
             })
 
-        # 6. Muestra de las primeras 10 filas para la vista previa
+        # 6. Vista previa de datos en la interfaz
         sample_df = df.head(10).astype(str).fillna("")
         sample_rows = sample_df.to_dict(orient='records')
 
