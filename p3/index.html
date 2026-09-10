@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Gestión de Limpieza de Bundles de Dataiku en S3</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Encabezado principal -->
+    <header class="app-header">
+      <div class="logo-title-container">
+        <div class="brand-logo">
+          <!-- Logo -->
+          <span class="logo-icon"></span>
+        </div>
+        <div class="header-text">
+          <span class="sub-heading"
+            >Banamex | Cognitive Services and Machine Learning Core of
+            Excellence</span
+          >
+          <h1 class="main-title">
+            Gestión de Limpieza de Bundles de Dataiku en S3
+          </h1>
+        </div>
+      </div>
+    </header>
+
+    <!-- Contenedor principal de la aplicación -->
+    <main class="app-container">
+      <section class="section-banner">
+        <h2>VERSIONAMIENTO DE PROYECTOS POR AMBIENTE</h2>
+      </section>
+
+      <!-- Panel contenedor de columnas de ambientes -->
+      <div class="environments-container">
+        <!-- Columna UAT -->
+        <div class="env-card" id="env-uat">
+          <h3 class="env-title">UAT</h3>
+          <div class="env-content">
+            <div class="nickname-group">
+              <span class="nickname-label">DKUD</span>
+              <ul class="bundle-list">
+                <li>AES9338SANDB/2026-05-23</li>
+                <li>AES9338SANDB/2026-05-29</li>
+              </ul>
+              <div class="action-row">
+                <span class="bundle-target">AES9338SANDB/2026-05-30</span>
+                <button class="btn btn-preserve" data-state="preserve">
+                  Preservar
+                </button>
+              </div>
+            </div>
+
+            <div class="nickname-group">
+              <span class="nickname-label">BUAU</span>
+              <ul class="bundle-list">
+                <li>DATAIKUPROCES/2026-05-23</li>
+                <li>DATAIKUPROCES/2026-05-29</li>
+              </ul>
+              <div class="action-row">
+                <span class="bundle-target">DATAIKUPROCES/2026-05-30</span>
+                <button class="btn btn-preserve" data-state="preserve">
+                  Preservar
+                </button>
+              </div>
+            </div>
+
+            <div class="nickname-group">
+              <span class="nickname-label">BUAU</span>
+              <ul class="bundle-list">
+                <li>DATAIKU_PROC11/2026-05-23</li>
+                <li>DATAIKU_PROC11/2026-05-29</li>
+              </ul>
+              <div class="action-row">
+                <span class="bundle-target">DATAIKU_PROC11/2026-05-30</span>
+                <button class="btn btn-preserve" data-state="preserve">
+                  Preservar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna PROD-1 -->
+        <div class="env-card" id="env-prod-1">
+          <h3 class="env-title">PROD-1</h3>
+          <div class="env-content">
+            <div class="nickname-group">
+              <span class="nickname-label">DKUF</span>
+              <ul class="bundle-list">
+                <li>DSSERSLAYOUT/2026-05-23</li>
+                <li>DSSERSLAYOUT/2026-05-29</li>
+              </ul>
+              <div class="action-row">
+                <span class="bundle-target">DSSERSLAYOUT/2026-05-30</span>
+                <button class="btn btn-preserve" data-state="preserve">
+                  Preservar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna PROD -->
+        <div class="env-card env-card-selected" id="env-prod">
+          <h3 class="env-title">PROD</h3>
+          <div class="env-content">
+            <div class="nickname-group">
+              <span class="nickname-label">DKUF</span>
+              <ul class="bundle-list">
+                <li>
+                  <span>DSSERSLAYOUT/2026-05-23</span>
+                  <button class="btn btn-revert" data-state="revert">
+                    Revertir
+                  </button>
+                </li>
+                <li>
+                  <span>DSSERSLAYOUT/2026-05-29</span>
+                  <button class="btn btn-preserve" data-state="preserve">
+                    Preservar
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de estado y acción principal -->
+      <footer class="app-footer">
+        <div class="metrics-summary">
+          <p>Espacio total ocupado: <strong id="total-space">80 GB</strong></p>
+          <p>Espacio por liberar: <strong id="free-space">16 GB</strong></p>
+          <p>
+            Espacio resultante considerado:
+            <strong id="result-space">64 GB</strong>
+          </p>
+        </div>
+
+        <div class="action-container">
+          <button id="btn-authorize" class="btn btn-authorize">
+            Autorizar
+          </button>
+        </div>
+      </footer>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
