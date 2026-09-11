@@ -4,235 +4,87 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestión de Limpieza de Bundles de Dataiku en S3</title>
-    <link rel="stylesheet" href="styles.css" />
+    <!-- Estilos de Dataiku WebApp y personalizados -->
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <!-- ========================================== -->
-    <!-- HEADER GLOBAL                              -->
-    <!-- ========================================== -->
-    <header class="main-header">
-      <div class="header-titles">
-        <span class="subtitle"
-          >Banamex | Cognitive Services and Machine Learning Core of
-          Excellence</span
-        >
-        <h1 class="title">Gestión de Limpieza de Bundles de Dataiku en S3</h1>
-      </div>
-      <div class="header-actions">
-        <button id="btn-switch-flow" class="btn-secondary">
-          Seleccionar flujo
-        </button>
-      </div>
-    </header>
+    <!-- CONTENEDOR PRINCIPAL -->
+    <div class="app-container">
+      <!-- ENCABEZADO INSTITUCIONAL -->
+      <header class="app-header">
+        <div class="header-branding">
+          <div class="logo-container">
+            <span class="logo-icon"></span>
+          </div>
+          <div class="header-titles">
+            <span class="org-subtitle"
+              >Banamex | Cognitive Services and Machine Learning Core of
+              Excellence</span
+            >
+            <h1 class="main-title">
+              Gestión de Limpieza de Bundles de Dataiku en S3
+            </h1>
+          </div>
+        </div>
 
-    <main class="content-container">
-      <!-- ========================================== -->
-      <!-- VISTA 1: NEW FLOW PRINCIPAL                -->
-      <!-- ========================================== -->
-      <section id="view-new-flow-main" class="flow-view">
-        <div class="view-header">
-          <h2>NEW FLOW | Versionamiento de Proyectos por Ambiente</h2>
-          <button id="btn-go-history" class="btn-secondary">
+        <!-- Botón Global para cambiar de Flujo (NEW FLOW / LEGACY FLOW) -->
+        <div class="header-actions">
+          <button id="btn-select-flow" class="btn-primary-action">
+            Seleccionar flujo
+          </button>
+        </div>
+      </header>
+
+      <!-- BARRA DE SUB-NAVEGACIÓN Y TÍTULO DE VISTA -->
+      <nav class="sub-header">
+        <div class="view-indicator">
+          <h2 id="view-title">
+            NEW FLOW | Versionamiento de Proyectos por Ambiente
+          </h2>
+        </div>
+        <div class="sub-header-actions">
+          <!-- Botón dinámico que se oculta o muestra dependiendo de la vista -->
+          <button id="btn-toggle-historic" class="btn-secondary-action">
             Consultar histórico
           </button>
         </div>
+      </nav>
 
-        <div class="grid-environments">
-          <!-- Columna UAT -->
-          <div class="env-card">
-            <h3>UAT</h3>
-            <div id="container-uat-bundles" class="card-content">
-              <!-- Ejemplo de estructura de renders dinámicos -->
-              <div class="nickname-group">
-                <h4>DKUD</h4>
-                <ul>
-                  <li class="action-row">
-                    <span class="bundle-target">AES9338SANDB/2026-05-23</span>
-                    <button
-                      class="btn-toggle status-discarded"
-                      data-state="discard"
-                      data-size-bytes="8589934592"
-                    >
-                      <span class="icon">&#10008;</span>
-                      <span class="label">Descartado</span>
-                    </button>
-                  </li>
-                  <li class="action-row">
-                    <span class="bundle-target">AES9338SANDB/2026-05-29</span>
-                    <button
-                      class="btn-toggle status-discarded"
-                      data-state="discard"
-                      data-size-bytes="8589934592"
-                    >
-                      <span class="icon">&#10008;</span>
-                      <span class="label">Descartado</span>
-                    </button>
-                  </li>
-                  <li class="action-row">
-                    <span class="bundle-target">AES9338SANDB/2026-05-30</span>
-                    <button
-                      class="btn-toggle status-preserved"
-                      data-state="preserve"
-                      data-size-bytes="0"
-                    >
-                      <span class="icon">&#10004;</span>
-                      <span class="label">Conservado</span>
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            </div>
+      <!-- CONTENEDOR DINÁMICO (JavaScript renderiza Vistas 1, 2, 3 o 4 aquí) -->
+      <main id="view-container" class="main-content">
+        <!-- Renderizado por app.js -->
+      </main>
+
+      <!-- PIE DE PÁGINA FIXO: MÉTRICAS DE ALMACENAMIENTO Y AUTORIZACIÓN -->
+      <footer class="app-footer">
+        <div class="metrics-panel">
+          <div class="metric-item">
+            <span class="metric-label">Espacio total ocupado:</span>
+            <span id="stat-total" class="metric-value">0.00 GB</span>
           </div>
-
-          <!-- Columna PROD-1 -->
-          <div class="env-card">
-            <h3>PROD-1</h3>
-            <div id="container-prod-bundles" class="card-content">
-              <div class="nickname-group">
-                <h4>DKUD</h4>
-                <ul>
-                  <li class="action-row">
-                    <span class="bundle-target">AES9338SANDB/2026-05-23</span>
-                    <button
-                      class="btn-toggle status-discarded"
-                      data-state="discard"
-                      data-size-bytes="8589934592"
-                    >
-                      <span class="icon">&#10008;</span>
-                      <span class="label">Descartado</span>
-                    </button>
-                  </li>
-                  <li class="action-row">
-                    <span class="bundle-target">AES9338SANDB/2026-05-29</span>
-                    <button
-                      class="btn-toggle status-discarded"
-                      data-state="discard"
-                      data-size-bytes="8589934592"
-                    >
-                      <span class="icon">&#10008;</span>
-                      <span class="label">Descartado</span>
-                    </button>
-                  </li>
-                  <li class="action-row">
-                    <span class="bundle-target">AES9338SANDB/2026-05-30</span>
-                    <button
-                      class="btn-toggle status-preserved"
-                      data-state="preserve"
-                      data-size-bytes="0"
-                    >
-                      <span class="icon">&#10004;</span>
-                      <span class="label">Conservado</span>
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            </div>
+          <div class="metric-item">
+            <span class="metric-label">Espacio por liberar:</span>
+            <span id="stat-liberate" class="metric-value highlight-red"
+              >0.00 GB</span
+            >
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Espacio resultante considerado:</span>
+            <span id="stat-result" class="metric-value highlight-green"
+              >0.00 GB</span
+            >
           </div>
         </div>
-      </section>
 
-      <!-- ========================================== -->
-      <!-- VISTA 2: NEW FLOW HISTÓRICO                -->
-      <!-- ========================================== -->
-      <section id="view-new-flow-history" class="flow-view hidden">
-        <div class="view-header">
-          <h2>NEW FLOW | Histórico de Proyectos por Ambiente</h2>
-          <button id="btn-select-env" class="btn-secondary">
-            Seleccionar ambiente
-          </button>
+        <!-- Botón Principal de Ejecución y Descarga de CSV -->
+        <div class="action-panel">
+          <button id="btn-authorize" class="btn-authorize">Autorizar</button>
         </div>
+      </footer>
+    </div>
 
-        <div class="table-card">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th class="col-server">Servidor</th>
-                <th class="col-project">Proyecto</th>
-                <th class="col-versions">Versiones</th>
-                <th class="col-status">Estatus final</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-new-history">
-              <!-- Renderizado vía JavaScript -->
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- ========================================== -->
-      <!-- VISTA 3: LEGACY FLOW PRINCIPAL             -->
-      <!-- ========================================== -->
-      <section id="view-legacy-flow" class="flow-view hidden">
-        <div class="view-header">
-          <h2>LEGACY FLOW | Versionamiento de Proyectos</h2>
-          <button id="btn-go-legacy-history" class="btn-secondary">
-            Consultar histórico
-          </button>
-        </div>
-
-        <div class="table-card">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th class="col-project">Proyecto</th>
-                <th class="col-versions">Versiones</th>
-                <th class="col-status">Estatus final</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-legacy-main">
-              <!-- Renderizado vía JavaScript -->
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- ========================================== -->
-      <!-- VISTA 4: LEGACY FLOW HISTÓRICO             -->
-      <!-- ========================================== -->
-      <section id="view-legacy-flow-history" class="flow-view hidden">
-        <div class="view-header">
-          <h2>LEGACY FLOW | Histórico de Proyectos</h2>
-          <button id="btn-back-legacy-main" class="btn-secondary">
-            Regresar a revisión
-          </button>
-        </div>
-
-        <div class="table-card">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th class="col-project">Proyecto</th>
-                <th class="col-versions">Versiones</th>
-                <th class="col-status">Estatus final</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-legacy-history">
-              <!-- Renderizado vía JavaScript -->
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-
-    <!-- ========================================== -->
-    <!-- FOOTER GLOBAL (MÉTRICAS Y AUTORIZACIÓN)    -->
-    <!-- ========================================== -->
-    <footer class="main-footer">
-      <div class="metrics-panel">
-        <p>
-          Espacio total ocupado: <strong id="metric-total-space">80 GB</strong>
-        </p>
-        <p>Espacio por liberar: <strong id="metric-free-space">0 GB</strong></p>
-        <p>
-          Espacio resultante considerado:
-          <strong id="metric-result-space">80 GB</strong>
-        </p>
-      </div>
-      <div class="action-panel">
-        <button id="btn-authorize" class="btn-primary">Autorizar</button>
-      </div>
-    </footer>
-
-    <script src="script.js"></script>
+    <!-- Carga de librerías de Dataiku y Script de la WebApp -->
+    <script src="/static/dataiku/js/api/v1/dataiku.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>

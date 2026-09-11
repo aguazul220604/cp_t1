@@ -1,348 +1,227 @@
+// Estado global de la aplicación
+let allBundles = [];
+let currentFlow = "NEW"; // 'NEW' o 'LEGACY'
+let isHistoricView = false; // false = Versionamiento, true = Histórico
+let selectedEnv = "UAT"; // 'UAT' o 'PROD-1' para vistas individuales
+
+// Inicialización de la WebApp
 document.addEventListener("DOMContentLoaded", () => {
-  // ==========================================
-  // 1. GESTIÓN DE VISTAS Y NAVEGACIÓN
-  // ==========================================
-  const views = {
-    newMain: document.getElementById("view-new-flow-main"),
-    newHistory: document.getElementById("view-new-flow-history"),
-    legacyMain: document.getElementById("view-legacy-flow"),
-    legacyHistory: document.getElementById("view-legacy-flow-history"),
-  };
+  fetchBundles();
+  setupEventListeners();
+});
 
-  let currentFlow = "NEW"; // "NEW" o "LEGACY"
-
-  function switchView(targetView) {
-    Object.values(views).forEach((view) => {
-      if (view) view.classList.add("hidden");
-    });
-    if (targetView) targetView.classList.remove("hidden");
+// 1. OBTENER DATOS DEL BACKEND
+async function fetchBundles() {
+  try {
+    const response = await fetch("/api/get-bundles");
+    allBundles = await response.json();
+    renderView();
+  } catch (error) {
+    console.error("Error al cargar los bundles:", error);
   }
+}
 
-  // Botón Global: Cambiar flujo (NEW <-> LEGACY)
-  document.getElementById("btn-switch-flow")?.addEventListener("click", () => {
-    if (currentFlow === "NEW") {
-      currentFlow = "LEGACY";
-      switchView(views.legacyMain);
-      loadLegacyData();
-    } else {
-      currentFlow = "NEW";
-      switchView(views.newMain);
-      loadNewFlowData();
-    }
+// 2. CONTROLADORES DE NAVEGACIÓN Y EVENTOS
+function setupEventListeners() {
+  // Cambio entre NEW FLOW y LEGACY FLOW
+  document.getElementById("btn-select-flow").addEventListener("click", () => {
+    currentFlow = currentFlow === "NEW" ? "LEGACY" : "NEW";
+    isHistoricView = false; // Reinicia a la vista principal del flujo
+    renderView();
   });
 
-  // Navegación dentro de NEW FLOW
-  document.getElementById("btn-go-history")?.addEventListener("click", () => {
-    switchView(views.newHistory);
-    loadHistoryData("NEW");
-  });
-
-  // Corrección de texto según maqueta visual: "Seleccionar ambiente"
-  document.getElementById("btn-select-env")?.addEventListener("click", () => {
-    switchView(views.newMain);
-  });
-
-  // Navegación dentro de LEGACY FLOW
+  // Alternar entre Versionamiento e Histórico
   document
-    .getElementById("btn-go-legacy-history")
+    .getElementById("btn-toggle-historic")
     ?.addEventListener("click", () => {
-      switchView(views.legacyHistory);
-      loadHistoryData("LEGACY");
+      isHistoricView = !isHistoricView;
+      renderView();
     });
 
-  document
-    .getElementById("btn-back-legacy-main")
-    ?.addEventListener("click", () => {
-      switchView(views.legacyMain);
-    });
-
-  // ==========================================
-  // 2. LÓGICA DE BOTONES DE ESTADO (CONSERVAR/DESCARTAR)
-  // ==========================================
-  document.addEventListener("click", (e) => {
-    const button = e.target.closest(".btn-toggle");
-    if (!button) return;
-
-    // Si el botón está dentro de un historial, deshabilitar toggle (solo lectura)
-    const activeView = getActiveView();
-    if (activeView === views.newHistory || activeView === views.legacyHistory) {
-      return;
-    }
-
-    const currentState = button.getAttribute("data-state");
-    const isPreserved = currentState === "preserve";
-
-    if (isPreserved) {
-      // Cambiar a Descartado
-      button.setAttribute("data-state", "discard");
-      button.className = "btn-toggle status-discarded";
-      button.querySelector(".icon").innerHTML = "&#10008;";
-      button.querySelector(".label").textContent = "Descartado";
-    } else {
-      // Cambiar a Conservado
-      button.setAttribute("data-state", "preserve");
-      button.className = "btn-toggle status-preserved";
-      button.querySelector(".icon").innerHTML = "&#10004;";
-      button.querySelector(".label").textContent = "Conservado";
-    }
-
-    recalculateMetrics();
-  });
-
-  // Helper para obtener la vista activa
-  function getActiveView() {
-    return Object.values(views).find(
-      (v) => v && !v.classList.contains("hidden"),
-    );
-  }
-
-  // ==========================================
-  // 3. RECÁLCULO DINÁMICO DE MÉTRICAS DE ESPACIO
-  // ==========================================
-  function recalculateMetrics() {
-    let bytesToFree = 0;
-    const activeView = getActiveView();
-    if (!activeView) return;
-
-    // Sumar bytes de todos los botones marcados como discard
-    const discardButtons = activeView.querySelectorAll(
-      '.btn-toggle[data-state="discard"]',
-    );
-
-    discardButtons.forEach((btn) => {
-      const bytes = parseFloat(btn.getAttribute("data-size-bytes") || "0");
-      bytesToFree += bytes;
-    });
-
-    // Base de cálculo inicial (se puede ajustar dinámicamente según API)
-    const totalSizeBytes = 80 * 1024 * 1024 * 1024; // 80 GB
-    const freeSizeBytes = bytesToFree;
-    const resultSizeBytes = Math.max(0, totalSizeBytes - freeSizeBytes);
-
-    const totalElem = document.getElementById("metric-total-space");
-    const freeElem = document.getElementById("metric-free-space");
-    const resultElem = document.getElementById("metric-result-space");
-
-    if (totalElem) totalElem.textContent = formatBytes(totalSizeBytes);
-    if (freeElem) freeElem.textContent = formatBytes(freeSizeBytes);
-    if (resultElem) resultElem.textContent = formatBytes(resultSizeBytes);
-  }
-
-  function formatBytes(bytes) {
-    if (!bytes || bytes === 0) return "0 GB";
-    const gb = bytes / (1024 * 1024 * 1024);
-    return gb.toFixed(2) + " GB";
-  }
-
-  // Helper genérico para renderizar un botón de estado con tamaño en bytes
-  function renderToggleButton(status, sizeBytes = 0) {
-    const isPreserve = status.toLowerCase() === "preserve";
-    const stateAttr = isPreserve ? "preserve" : "discard";
-    const classStatus = isPreserve ? "status-preserved" : "status-discarded";
-    const icon = isPreserve ? "&#10004;" : "&#10008;";
-    const label = isPreserve ? "Conservado" : "Descartado";
-
-    return `
-      <button class="btn-toggle ${classStatus}" data-state="${stateAttr}" data-size-bytes="${sizeBytes}">
-        <span class="icon">${icon}</span>
-        <span class="label">${label}</span>
-      </button>
-    `;
-  }
-
-  // ==========================================
-  // 4. INTEGRACIÓN CON BACKEND (FETCH API)
-  // ==========================================
-
-  // Cargar datos principales de New Flow (Servidores UAT y PROD-1)
-  async function loadNewFlowData() {
-    try {
-      const response = await fetch("/extension-api/get-bundles-new");
-      const data = await response.json();
-
-      // Mapeo dinámico para contenedores UAT y PROD-1 si se recibe payload
-      if (data && data.environments) {
-        renderNewFlowCards(data.environments);
-      }
-      recalculateMetrics();
-    } catch (error) {
-      console.error("Error cargando bundles de New Flow:", error);
-    }
-  }
-
-  // Función de apoyo para renderizar tarjetas UAT y PROD-1
-  function renderNewFlowCards(environments) {
-    const uatContainer = document.getElementById("container-uat-bundles");
-    const prodContainer = document.getElementById("container-prod-bundles");
-
-    if (uatContainer && environments.UAT) {
-      uatContainer.innerHTML = buildEnvironmentCardHTML(environments.UAT);
-    }
-    if (prodContainer && environments["PROD-1"]) {
-      prodContainer.innerHTML = buildEnvironmentCardHTML(
-        environments["PROD-1"],
-      );
-    }
-  }
-
-  function buildEnvironmentCardHTML(serversData) {
-    let html = "";
-    // Iterar nicknames (DKUD, RISP, DISU, DKUU, etc.)
-    Object.keys(serversData).forEach((nickname) => {
-      html += `<div class="nickname-group"><h4>${nickname}</h4><ul>`;
-      serversData[nickname].forEach((item) => {
-        html += `
-          <li class="action-row">
-            <span class="bundle-target">${item.bundle_id || item.name}</span>
-            ${renderToggleButton(item.status || "preserve", item.size_bytes || 0)}
-          </li>
-        `;
-      });
-      html += `</ul></div>`;
-    });
-    return html;
-  }
-
-  // Cargar datos principales de Legacy Flow
-  async function loadLegacyData() {
-    try {
-      const response = await fetch("/extension-api/get-bundles-legacy");
-      const data = await response.json();
-
-      const tbody = document.getElementById("tbody-legacy-main");
-      if (tbody && Array.isArray(data)) {
-        tbody.innerHTML = "";
-        data.forEach((item) => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td class="cell-project">${item.project}</td>
-            <td class="cell-versions" colspan="2">
-              <div class="version-row">
-                <span class="version-name">${item.version}</span>
-                ${renderToggleButton(item.status || "preserve", item.size_bytes || 0)}
-              </div>
-            </td>
-          `;
-          tbody.appendChild(tr);
-        });
-      }
-      recalculateMetrics();
-    } catch (error) {
-      console.error("Error cargando bundles de Legacy Flow:", error);
-    }
-  }
-
-  // Cargar Históricos (API genérica por flujo)
-  async function loadHistoryData(flowType) {
-    try {
-      const response = await fetch(
-        `/extension-api/get-historico?flow=${flowType}`,
-      );
-      const historyList = await response.json();
-
-      const targetTbodyId =
-        flowType === "NEW" ? "tbody-new-history" : "tbody-legacy-history";
-      const tbody = document.getElementById(targetTbodyId);
-
-      if (!tbody) return;
-      tbody.innerHTML = "";
-
-      historyList.forEach((item) => {
-        const tr = document.createElement("tr");
-        const sizeBytes = item.size_bytes || 0;
-
-        if (flowType === "NEW") {
-          tr.innerHTML = `
-            <td class="cell-server">${item.server || item.nickname || ""}</td>
-            <td class="cell-project">${item.project}</td>
-            <td class="cell-versions" colspan="2">
-              <div class="version-row">
-                <span class="version-name">${item.version}</span>
-                ${renderToggleButton(item.status, sizeBytes)}
-              </div>
-            </td>
-          `;
-        } else {
-          tr.innerHTML = `
-            <td class="cell-project">${item.project}</td>
-            <td class="cell-versions" colspan="2">
-              <div class="version-row">
-                <span class="version-name">${item.version}</span>
-                ${renderToggleButton(item.status, sizeBytes)}
-              </div>
-            </td>
-          `;
-        }
-        tbody.appendChild(tr);
-      });
-      recalculateMetrics();
-    } catch (error) {
-      console.error(`Error cargando histórico para ${flowType}:`, error);
-    }
-  }
-
-  // Evento de Autorización (Ejecución de la limpieza/subida)
+  // Botón principal de Ejecución / Limpieza
   document
     .getElementById("btn-authorize")
-    ?.addEventListener("click", async () => {
-      const activeView = getActiveView();
-      if (!activeView) return;
+    .addEventListener("click", handleAuthorize);
+}
 
-      const itemsToDiscard = [];
+// 3. RENDERIZADO DINÁMICO DE VISTAS (1 a 4)
+function renderView() {
+  updateHeaderTitle();
 
-      activeView
-        .querySelectorAll('.btn-toggle[data-state="discard"]')
-        .forEach((btn) => {
-          const container =
-            btn.closest(".action-row") || btn.closest(".version-row");
-          const bundleTarget = container
-            ? container.querySelector(".bundle-target")?.textContent ||
-              container.querySelector(".version-name")?.textContent
-            : "";
+  const container = document.getElementById("view-container");
+  container.innerHTML = "";
 
-          if (bundleTarget) {
-            itemsToDiscard.push({
-              target: bundleTarget,
-              size_bytes: parseFloat(
-                btn.getAttribute("data-size-bytes") || "0",
-              ),
-            });
-          }
-        });
+  if (currentFlow === "NEW" && !isHistoricView) {
+    // VISTA 1: NEW FLOW - Versionamiento por Ambiente (UAT vs PROD-1)
+    container.appendChild(createDualEnvView());
+  } else if (currentFlow === "NEW" && isHistoricView) {
+    // VISTA 2: NEW FLOW - Histórico por Ambiente
+    container.appendChild(createHistoricView("NEW"));
+  } else if (currentFlow === "LEGACY" && !isHistoricView) {
+    // VISTA 3: LEGACY FLOW - Versionamiento
+    container.appendChild(createSingleTableView("LEGACY", false));
+  } else if (currentFlow === "LEGACY" && isHistoricView) {
+    // VISTA 4: LEGACY FLOW - Histórico
+    container.appendChild(createSingleTableView("LEGACY", true));
+  }
 
-      if (itemsToDiscard.length === 0) {
-        alert("No hay elementos marcados para descartar/eliminar.");
-        return;
-      }
+  calculateMetrics();
+}
 
-      const confirmAction = confirm(
-        `¿Está seguro de procesar y eliminar ${itemsToDiscard.length} bundles seleccionados?`,
-      );
-      if (!confirmAction) return;
+// Actualiza los encabezados de la pantalla según el mockup
+function updateHeaderTitle() {
+  const titleElem = document.getElementById("view-title");
+  const flowText = currentFlow === "NEW" ? "NEW FLOW" : "LEGACY FLOW";
+  const viewText = isHistoricView
+    ? "Histórico de Proyectos"
+    : "Versionamiento de Proyectos";
+  titleElem.textContent = `${flowText} | ${viewText}`;
+}
 
-      try {
-        const response = await fetch("/extension-api/authorize-cleanup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            flow: currentFlow,
-            targets: itemsToDiscard,
-          }),
-        });
+// Generador de Vista 1 (Columnas UAT y PROD-1 lado a lado)
+function createDualEnvView() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "dual-env-container";
 
-        const result = await response.json();
-        if (result.status === "success") {
-          alert("Proceso de limpieza ejecutado correctamente.");
-          location.reload();
-        } else {
-          alert("Error al ejecutar la limpieza: " + result.message);
-        }
-      } catch (error) {
-        console.error("Error al enviar autorización:", error);
-        alert("Error de comunicación con el backend.");
-      }
+  ["UAT", "PROD-1"].forEach((env) => {
+    const col = document.createElement("div");
+    col.className = "env-column";
+    col.innerHTML = `<h3>${env}</h3>`;
+
+    const envBundles = allBundles.filter(
+      (b) => b.flow === "NEW" && b.env === env,
+    );
+    col.appendChild(buildBundleListUI(envBundles));
+    wrapper.appendChild(col);
+  });
+
+  return wrapper;
+}
+
+// Generador de Tablas para Vistas 2, 3 y 4
+function createSingleTableView(flow, isHistoric) {
+  const wrapper = document.createElement("div");
+  const filtered = allBundles.filter(
+    (b) => b.flow === flow && (isHistoric ? b.status === "Preservado" : true),
+  );
+
+  // Si es histórico de New Flow, incluye selector de ambiente
+  if (flow === "NEW" && isHistoric) {
+    const selector = document.createElement("select");
+    selector.innerHTML = `<option value="UAT">UAT</option><option value="PROD-1">PROD-1</option>`;
+    selector.value = selectedEnv;
+    selector.addEventListener("change", (e) => {
+      selectedEnv = e.target.value;
+      renderView();
+    });
+    wrapper.appendChild(selector);
+  }
+
+  const targetList =
+    flow === "NEW" ? filtered.filter((b) => b.env === selectedEnv) : filtered;
+  wrapper.appendChild(buildBundleListUI(targetList, true));
+  return wrapper;
+}
+
+// Construye los ítems interactivos con botón Toggle (Check/X)
+function buildBundleListUI(bundles, showServer = false) {
+  const list = document.createElement("div");
+  list.className = "bundle-list";
+
+  bundles.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = `bundle-row ${item.status.toLowerCase()}`;
+
+    const isPreserved = item.status === "Preservado";
+
+    row.innerHTML = `
+            ${showServer ? `<span class="col-server">${item.server}</span>` : ""}
+            <span class="col-project"><strong>${item.project}</strong></span>
+            <span class="col-filename">${item.filename}</span>
+            <span class="col-size">${item.size_gb} GB</span>
+            <button class="btn-toggle ${isPreserved ? "preserved" : "discarded"}" data-path="${item.s3_path}">
+                ${isPreserved ? "✔ Preservado" : "✖ Descartado"}
+            </button>
+        `;
+
+    // Evento para cambiar de estado al dar clic
+    row.querySelector(".btn-toggle").addEventListener("click", (e) => {
+      toggleStatus(item.s3_path);
     });
 
-  // Inicialización
-  recalculateMetrics();
-});
+    list.appendChild(row);
+  });
+
+  return list;
+}
+
+// 4. CAMBIO DE ESTADO Y RECÁLCULO
+function toggleStatus(s3Path) {
+  const item = allBundles.find((b) => b.s3_path === s3Path);
+  if (item) {
+    item.status = item.status === "Preservado" ? "Descartado" : "Preservado";
+
+    // Guardar estado persistente en background
+    fetch("/api/save-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(allBundles),
+    });
+
+    renderView();
+  }
+}
+
+// 5. CÁLCULO DE MÉTRICAS DEL PIE DE PÁGINA
+function calculateMetrics() {
+  const totalOccupied = allBundles.reduce((acc, curr) => acc + curr.size_gb, 0);
+  const toLiberate = allBundles
+    .filter((b) => b.status === "Descartado")
+    .reduce((acc, curr) => acc + curr.size_gb, 0);
+  const resulting = totalOccupied - toLiberate;
+
+  document.getElementById("stat-total").textContent =
+    `${totalOccupied.toFixed(2)} GB`;
+  document.getElementById("stat-liberate").textContent =
+    `${toLiberate.toFixed(2)} GB`;
+  document.getElementById("stat-result").textContent =
+    `${resulting.toFixed(2)} GB`;
+}
+
+// 6. ACCIÓN AUTORIZAR Y DESCARGA AUTOMÁTICA DEL REPORTES
+async function handleAuthorize() {
+  if (
+    !confirm(
+      "¿Está seguro de ejecutar la eliminación física en S3 para los archivos marcados como Descartados?",
+    )
+  ) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/authorize-cleanup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(allBundles),
+    });
+
+    if (response.ok) {
+      // Recibir el binario CSV devuelto por el backend
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `reporte_limpieza_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      alert("Proceso de eliminación completado y reporte descargado.");
+      fetchBundles(); // Recargar datos actualizados
+    } else {
+      alert("Ocurrió un error al ejecutar la autorización.");
+    }
+  } catch (error) {
+    console.error("Error al autorizar:", error);
+  }
+}

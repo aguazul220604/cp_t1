@@ -1,23 +1,17 @@
-/* ==========================================
-   1. VARIABLES Y CONFIGURACIÓN GENERAL
-   ========================================== */
+/* ==========================================================================
+   1. VARIABLES DE ESTILO Y RESET GENERAL
+   ========================================================================== */
 :root {
-  --bg-main: #0b3c4d; /* Azul petróleo oscuro del fondo */
-  --bg-card: #ffffff; /* Blanco para contenedores */
-  --bg-header-bar: #0b3c4d; /* Header secundario */
-  --text-white: #ffffff;
-  --text-dark: #1a1a1a;
-  --text-muted: #7f8c8d;
-
-  /* Colores de Estatus */
-  --status-discard-bg: #e74c3c; /* Rojo para descartado */
-  --status-preserve-bg: #2ecc71; /* Verde para conservado */
-
-  /* Botones de Acción */
-  --btn-yellow: #ffe600; /* Amarillo del botón Autorizar */
-  --btn-yellow-hover: #e6d000;
-  --btn-pill-bg: #ffffff;
-  --btn-pill-text: #0b3c4d;
+  --bg-primary: #003348; /* Azul oscuro institucional del fondo */
+  --bg-card: #002231; /* Azul más oscuro para los contenedores */
+  --bg-inner: #ffffff; /* Blanco de la caja interior de datos */
+  --text-primary: #ffffff; /* Texto blanco */
+  --text-dark: #1e293b; /* Texto oscuro sobre fondo blanco */
+  --text-muted: #64748b; /* Texto secundario */
+  --accent-yellow: #ffee00; /* Amarillo fosforescente para Autorizar */
+  --accent-red: #ef4444; /* Rojo para Descartado / Espacio a liberar */
+  --accent-green: #22c55e; /* Verde para Conservado / Espacio resultante */
+  --border-radius: 12px;
 }
 
 * {
@@ -30,269 +24,241 @@
 }
 
 body {
-  background-color: var(--bg-main);
-  color: var(--text-white);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 20px 40px;
 }
 
-.hidden {
-  display: none !important;
+/* ==========================================================================
+   2. ESTRUCTURA Y CONTENEDORES
+   ========================================================================== */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 20px 30px;
 }
 
-/* ==========================================
-   2. HEADER GLOBAL
-   ========================================== */
-.main-header {
+/* Encabezado Principal */
+.app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 15px;
 }
 
-.header-titles .subtitle {
+.header-branding {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.logo-icon {
+  width: 35px;
+  height: 35px;
+  background-color: #e60000; /* Rojo Banamex */
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.org-subtitle {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: #94a3b8;
   display: block;
-  margin-bottom: 4px;
 }
 
-.header-titles .title {
-  font-size: 1.25rem;
+.main-title {
+  font-size: 1.4rem;
   font-weight: 700;
 }
 
-/* Botón Ovalado "Seleccionar flujo" / "Consultar histórico" */
-.btn-secondary {
-  background-color: var(--btn-pill-bg);
-  color: var(--btn-pill-text);
-  border: none;
-  padding: 8px 20px;
-  border-radius: 20px;
-  font-weight: 600;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-.btn-secondary:hover {
-  background-color: #e0e0e0;
-}
-
-/* ==========================================
-   3. CONTENEDOR PRINCIPAL Y ENCABEZADOS
-   ========================================== */
-.content-container {
-  flex: 1;
-  margin-top: 20px;
-}
-
-.view-header {
+/* Sub-navegación */
+.sub-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-top: 10px;
+  margin-bottom: 15px;
 }
 
-.view-header h2 {
+#view-title {
   font-size: 1.1rem;
   font-weight: 600;
   letter-spacing: 0.5px;
 }
 
-/* ==========================================
-   4. NEW FLOW: GRID Y TARJETAS
-   ========================================== */
-.grid-environments {
+/* Área Principal Dinámica */
+.main-content {
+  flex: 1;
+  background-color: var(--bg-card);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==========================================================================
+   3. BOTONES Y ACCIONES
+   ========================================================================== */
+.btn-primary-action,
+.btn-secondary-action {
+  background: #ffffff;
+  color: var(--bg-card);
+  border: none;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary-action:hover,
+.btn-secondary-action:hover {
+  background: #e2e8f0;
+}
+
+.btn-authorize {
+  background-color: var(--accent-yellow);
+  color: #000;
+  border: none;
+  padding: 12px 40px;
+  border-radius: 25px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  transition:
+    transform 0.1s ease,
+    background-color 0.2s;
+}
+
+.btn-authorize:hover {
+  background-color: #ebd800;
+  transform: scale(1.02);
+}
+
+/* Buttons de Toggle (Estatus en Filas) */
+.btn-toggle {
+  border: none;
+  background: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.btn-toggle.preserved {
+  color: var(--accent-green);
+}
+
+.btn-toggle.discarded {
+  color: var(--accent-red);
+}
+
+/* ==========================================================================
+   4. DISTRIBUCIÓN DE VISTAS (DUAL Y TABLAS)
+   ========================================================================== */
+/* Vista 1: Columnas UAT y PROD-1 Lado a Lado */
+.dual-env-container {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
+  height: 100%;
 }
 
-.env-card {
-  background-color: var(--bg-card);
-  border-radius: 12px;
+.env-column {
+  background-color: var(--bg-inner);
+  border-radius: var(--border-radius);
   padding: 20px;
   color: var(--text-dark);
-  min-height: 380px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
 }
 
-.env-card h3 {
+.env-column h3 {
   text-align: center;
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   margin-bottom: 15px;
-  color: var(--bg-main);
+  color: var(--bg-card);
 }
 
-.nickname-group {
-  margin-bottom: 20px;
+/* Listado de Bundles */
+.bundle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.nickname-group h4 {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  margin-bottom: 8px;
-}
-
-.nickname-group ul {
-  list-style: none;
-}
-
-.action-row {
+.bundle-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.9rem;
 }
 
-.bundle-target,
-.version-name {
+.col-project {
+  flex: 1;
+}
+
+.col-filename {
+  flex: 2;
   font-family: monospace;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #2c3e50;
+  color: #475569;
 }
 
-/* ==========================================
-   5. BOTONES DE TOGGLE (ESTATUS)
-   ========================================== */
-.btn-toggle {
-  display: inline-flex;
-  align-items: center;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  outline: none;
-}
-
-.btn-toggle .icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 12px;
-  margin-right: 8px;
-}
-
-.btn-toggle.status-discarded .icon {
-  background-color: var(--status-discard-bg);
-}
-
-.btn-toggle.status-preserved .icon {
-  background-color: var(--status-preserve-bg);
-}
-
-.btn-toggle .label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-/* ==========================================
-   6. TABLAS (LEGACY Y HISTÓRICOS)
-   ========================================== */
-.table-card {
-  background-color: var(--bg-card);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-}
-
-.data-table thead {
-  background-color: #082c38; /* Cabecera oscura dentro del card */
-  color: var(--text-white);
-}
-
-.data-table th {
-  padding: 14px 20px;
-  font-size: 0.9rem;
+.col-size {
+  width: 80px;
+  text-align: right;
+  margin-right: 15px;
   font-weight: 600;
 }
 
-.data-table td {
-  padding: 16px 20px;
-  color: var(--text-dark);
-  vertical-align: top;
-}
-
-.cell-project {
-  font-weight: bold;
+/* Selector de ambiente en histórico */
+select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 15px;
   font-size: 0.9rem;
-  width: 30%;
 }
 
-.cell-server {
-  font-weight: bold;
-  font-size: 0.9rem;
-  width: 20%;
-}
-
-.version-row {
+/* ==========================================================================
+   5. PIE DE PÁGINA FIXO Y MÉTRICAS
+   ========================================================================== */
+.app-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  padding-top: 15px;
+  margin-top: 10px;
 }
 
-.version-row:last-child {
-  margin-bottom: 0;
-}
-
-/* ==========================================
-   7. FOOTER GLOBAL
-   ========================================== */
-.main-footer {
+.metrics-panel {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-top: 30px;
-  padding-top: 10px;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
-.metrics-panel p {
-  font-size: 0.9rem;
-  margin-bottom: 4px;
-  color: rgba(255, 255, 255, 0.9);
+.metric-label {
+  color: #cbd5e1;
 }
 
-.metrics-panel strong {
-  font-weight: 700;
+.highlight-red {
+  color: #f87171;
 }
 
-/* Botón Amarillo "Autorizar" */
-.btn-primary {
-  background-color: var(--btn-yellow);
-  color: var(--text-dark);
-  border: none;
-  padding: 12px 48px;
-  border-radius: 24px;
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  transition:
-    background-color 0.2s ease,
-    transform 0.1s ease;
-}
-
-.btn-primary:hover {
-  background-color: var(--btn-yellow-hover);
-}
-
-.btn-primary:active {
-  transform: scale(0.98);
+.highlight-green {
+  color: #4ade80;
 }
