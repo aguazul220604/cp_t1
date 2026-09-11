@@ -2,18 +2,26 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestión de Limpieza de Bundles de Dataiku en S3</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <!-- Encabezado principal -->
+    <!-- ENCABEZADO INSTITUCIONAL -->
     <header class="app-header">
-      <div class="logo-title-container">
-        <div class="brand-logo">
-          <!-- Logo -->
-          <span class="logo-icon"></span>
-        </div>
-        <div class="header-text">
+      <div class="brand-container">
+        <!-- Logo SVG -->
+        <svg
+          class="brand-logo"
+          width="40"
+          height="40"
+          viewBox="0 0 100 100"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle cx="50" cy="50" r="45" fill="#E60000" />
+          <path d="M30 50 L50 30 L70 50 L50 70 Z" fill="#FFFFFF" />
+        </svg>
+        <div class="brand-text">
           <span class="sub-heading"
             >Banamex | Cognitive Services and Machine Learning Core of
             Excellence</span
@@ -23,117 +31,258 @@
           </h1>
         </div>
       </div>
+      <!-- Botón Global para alternar entre Flujos (New / Legacy) -->
+      <div class="global-actions">
+        <button id="btn-switch-flow" class="btn btn-secondary">
+          Seleccionar flujo
+        </button>
+      </div>
     </header>
 
-    <!-- Contenedor principal de la aplicación -->
+    <!-- CONTENEDOR PRINCIPAL DE VISTAS (Navegación) -->
     <main class="app-container">
-      <section class="section-banner">
-        <h2>VERSIONAMIENTO DE PROYECTOS POR AMBIENTE</h2>
+      <!-- ========================================== -->
+      <!-- INTERFAZ 1: NEW FLOW - PRINCIPAL           -->
+      <!-- ========================================== -->
+      <section id="view-new-flow-main" class="view-section active">
+        <div class="section-header">
+          <h2>NEW FLOW | Versionamiento de Proyectos por Ambiente</h2>
+          <button id="btn-go-history" class="btn btn-outline">
+            Consultar histórico
+          </button>
+        </div>
+
+        <!-- Tarjetas de Ambientes (UAT y PROD-1) -->
+        <div class="environments-grid">
+          <!-- Columna UAT -->
+          <div class="env-card" id="env-uat">
+            <h3 class="env-title">UAT</h3>
+            <div class="env-content">
+              <div class="nickname-group">
+                <span class="nickname-label">DKUD</span>
+                <ul class="bundle-list">
+                  <li>AES9338SANDB/2026-05-23</li>
+                  <li>AES9338SANDB/2026-05-29</li>
+                </ul>
+                <div class="action-row">
+                  <span class="bundle-target">AES9338SANDB/2026-05-30</span>
+                  <button
+                    class="btn-toggle status-preserved"
+                    data-state="preserve"
+                    title="Clic para alternar estado"
+                  >
+                    <span class="icon">&#10004;</span>
+                    <span class="label">Conservado</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="nickname-group">
+                <span class="nickname-label">BUAU</span>
+                <ul class="bundle-list">
+                  <li>DATAIKUPROCES/2026-05-23</li>
+                  <li>DATAIKUPROCES/2026-05-29</li>
+                </ul>
+                <div class="action-row">
+                  <span class="bundle-target">DATAIKUPROCES/2026-05-30</span>
+                  <button
+                    class="btn-toggle status-discarded"
+                    data-state="discard"
+                    data-size-bytes="8589934592"
+                    title="Clic para alternar estado"
+                  >
+                    <span class="icon">&#10008;</span>
+                    <span class="label">Descartado</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="nickname-group">
+                <span class="nickname-label">BUAU</span>
+                <ul class="bundle-list">
+                  <li>DATAIKU_PROC11/2026-05-23</li>
+                  <li>DATAIKU_PROC11/2026-05-29</li>
+                </ul>
+                <div class="action-row">
+                  <span class="bundle-target">DATAIKU_PROC11/2026-05-30</span>
+                  <button
+                    class="btn-toggle status-preserved"
+                    data-state="preserve"
+                    title="Clic para alternar estado"
+                  >
+                    <span class="icon">&#10004;</span>
+                    <span class="label">Conservado</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Columna PROD-1 -->
+          <div class="env-card" id="env-prod-1">
+            <h3 class="env-title">PROD-1</h3>
+            <div class="env-content">
+              <div class="nickname-group">
+                <span class="nickname-label">DKUF</span>
+                <ul class="bundle-list">
+                  <li>DSSERSLAYOUT/2026-05-23</li>
+                  <li>DSSERSLAYOUT/2026-05-29</li>
+                </ul>
+                <div class="action-row">
+                  <span class="bundle-target">DSSERSLAYOUT/2026-05-30</span>
+                  <button
+                    class="btn-toggle status-preserved"
+                    data-state="preserve"
+                    title="Clic para alternar estado"
+                  >
+                    <span class="icon">&#10004;</span>
+                    <span class="label">Conservado</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <!-- Panel contenedor de columnas de ambientes -->
-      <div class="environments-container">
-        <!-- Columna UAT -->
-        <div class="env-card" id="env-uat">
-          <h3 class="env-title">UAT</h3>
-          <div class="env-content">
-            <div class="nickname-group">
-              <span class="nickname-label">DKUD</span>
-              <ul class="bundle-list">
-                <li>AES9338SANDB/2026-05-23</li>
-                <li>AES9338SANDB/2026-05-29</li>
-              </ul>
-              <div class="action-row">
-                <span class="bundle-target">AES9338SANDB/2026-05-30</span>
-                <button class="btn btn-preserve" data-state="preserve">
-                  Preservar
-                </button>
-              </div>
-            </div>
-
-            <div class="nickname-group">
-              <span class="nickname-label">BUAU</span>
-              <ul class="bundle-list">
-                <li>DATAIKUPROCES/2026-05-23</li>
-                <li>DATAIKUPROCES/2026-05-29</li>
-              </ul>
-              <div class="action-row">
-                <span class="bundle-target">DATAIKUPROCES/2026-05-30</span>
-                <button class="btn btn-preserve" data-state="preserve">
-                  Preservar
-                </button>
-              </div>
-            </div>
-
-            <div class="nickname-group">
-              <span class="nickname-label">BUAU</span>
-              <ul class="bundle-list">
-                <li>DATAIKU_PROC11/2026-05-23</li>
-                <li>DATAIKU_PROC11/2026-05-29</li>
-              </ul>
-              <div class="action-row">
-                <span class="bundle-target">DATAIKU_PROC11/2026-05-30</span>
-                <button class="btn btn-preserve" data-state="preserve">
-                  Preservar
-                </button>
-              </div>
-            </div>
-          </div>
+      <!-- ========================================== -->
+      <!-- INTERFAZ 2: NEW FLOW - HISTÓRICO          -->
+      <!-- ========================================== -->
+      <section id="view-new-flow-history" class="view-section hidden">
+        <div class="section-header">
+          <h2>NEW FLOW | Histórico de Proyectos por Ambiente</h2>
+          <button id="btn-select-env" class="btn btn-outline">
+            Seleccionar ambiente
+          </button>
         </div>
 
-        <!-- Columna PROD-1 -->
-        <div class="env-card" id="env-prod-1">
-          <h3 class="env-title">PROD-1</h3>
-          <div class="env-content">
-            <div class="nickname-group">
-              <span class="nickname-label">DKUF</span>
-              <ul class="bundle-list">
-                <li>DSSERSLAYOUT/2026-05-23</li>
-                <li>DSSERSLAYOUT/2026-05-29</li>
-              </ul>
-              <div class="action-row">
-                <span class="bundle-target">DSSERSLAYOUT/2026-05-30</span>
-                <button class="btn btn-preserve" data-state="preserve">
-                  Preservar
-                </button>
-              </div>
-            </div>
-          </div>
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Servidor</th>
+                <th>Proyecto</th>
+                <th>Versiones</th>
+                <th>Estatus final</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="cell-server">SKUD</td>
+                <td class="cell-project">PROYECTO_DATA_1</td>
+                <td class="cell-versions" colspan="2">
+                  <div class="version-row">
+                    <span class="version-name"
+                      >PROYECTO_DATA_1/2026-11-12-1010</span
+                    >
+                    <button
+                      class="btn-toggle status-preserved"
+                      data-state="preserve"
+                    >
+                      <span class="icon">&#10004;</span>
+                      <span class="label">Conservado</span>
+                    </button>
+                  </div>
+                  <div class="version-row">
+                    <span class="version-name"
+                      >PROYECTO_DATA_1/2026-11-12-1010</span
+                    >
+                    <button
+                      class="btn-toggle status-discarded"
+                      data-state="discard"
+                      data-size-bytes="8589934592"
+                    >
+                      <span class="icon">&#10008;</span>
+                      <span class="label">Descartado</span>
+                    </button>
+                  </div>
+                  <div class="version-row">
+                    <span class="version-name"
+                      >PROYECTO_DATA_1/2026-11-12-1010</span
+                    >
+                    <button
+                      class="btn-toggle status-preserved"
+                      data-state="preserve"
+                    >
+                      <span class="icon">&#10004;</span>
+                      <span class="label">Conservado</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- INTERFAZ 3: LEGACY FLOW                    -->
+      <!-- ========================================== -->
+      <section id="view-legacy-flow" class="view-section hidden">
+        <div class="section-header">
+          <h2>LEGACY FLOW | Versionamiento de Proyectos</h2>
         </div>
 
-        <!-- Columna PROD -->
-        <div class="env-card env-card-selected" id="env-prod">
-          <h3 class="env-title">PROD</h3>
-          <div class="env-content">
-            <div class="nickname-group">
-              <span class="nickname-label">DKUF</span>
-              <ul class="bundle-list">
-                <li>
-                  <span>DSSERSLAYOUT/2026-05-23</span>
-                  <button class="btn btn-revert" data-state="revert">
-                    Revertir
-                  </button>
-                </li>
-                <li>
-                  <span>DSSERSLAYOUT/2026-05-29</span>
-                  <button class="btn btn-preserve" data-state="preserve">
-                    Preservar
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </div>
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Proyecto</th>
+                <th>Versiones</th>
+                <th>Estatus final</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="cell-project">PROYECTO_DATA_1</td>
+                <td class="cell-versions" colspan="2">
+                  <div class="version-row">
+                    <span class="version-name"
+                      >PROYECTO_DATA_1/2026-11-12-1010</span
+                    >
+                    <button
+                      class="btn-toggle status-discarded"
+                      data-state="discard"
+                      data-size-bytes="8589934592"
+                    >
+                      <span class="icon">&#10008;</span>
+                      <span class="label">Descartado</span>
+                    </button>
+                  </div>
+                  <div class="version-row">
+                    <span class="version-name"
+                      >PROYECTO_DATA_1/2026-11-12-1010</span
+                    >
+                    <button
+                      class="btn-toggle status-preserved"
+                      data-state="preserve"
+                    >
+                      <span class="icon">&#10004;</span>
+                      <span class="label">Conservado</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-      </div>
+      </section>
 
-      <!-- Barra de estado y acción principal -->
+      <!-- ========================================== -->
+      <!-- FOOTER GLOBAL: MÉTRICAS Y AUTORIZACIÓN     -->
+      <!-- ========================================== -->
       <footer class="app-footer">
         <div class="metrics-summary">
-          <p>Espacio total ocupado: <strong id="total-space">80 GB</strong></p>
-          <p>Espacio por liberar: <strong id="free-space">16 GB</strong></p>
+          <p>
+            Espacio total ocupado:
+            <strong id="metric-total-space">80 GB</strong>
+          </p>
+          <p>
+            Espacio por liberar: <strong id="metric-free-space">16 GB</strong>
+          </p>
           <p>
             Espacio resultante considerado:
-            <strong id="result-space">64 GB</strong>
+            <strong id="metric-result-space">64 GB</strong>
           </p>
         </div>
 

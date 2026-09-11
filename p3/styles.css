@@ -16,44 +16,57 @@ body {
   flex-direction: column;
 }
 
+/* Control de Visibilidad */
+.view-section {
+  display: none;
+  width: 100%;
+}
+
+.view-section.active {
+  display: block; /* Mostrar la sección activa */
+}
+
+.view-section.hidden {
+  display: none;
+}
+
 /* ==========================================
-   ENCABEZADO PRINCIPAL
+   ENCABEZADO PRINCIPAL 
    ========================================== */
 .app-header {
   padding: 15px 30px;
   background-color: #0a2b3a;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.logo-title-container {
+.brand-container {
   display: flex;
   align-items: center;
   gap: 15px;
 }
 
 .brand-logo {
-  width: 32px;
-  height: 32px;
-  background-color: #e60000;
-  border-radius: 4px;
   flex-shrink: 0;
 }
 
-.header-text .sub-heading {
+.brand-text .sub-heading {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
   color: #b0c4de;
   font-weight: 300;
 }
 
-.header-text .main-title {
-  font-size: 20px;
+.brand-text .main-title {
+  font-size: 18px;
   font-weight: 600;
   color: #ffffff;
 }
 
 /* ==========================================
-   CONTENEDOR Y BANNER
+   CONTENEDOR Y ENCABEZADOS DE SECCIÓN
    ========================================== */
 .app-container {
   padding: 20px 40px;
@@ -62,23 +75,104 @@ body {
   flex-direction: column;
 }
 
-.section-banner h2 {
-  text-align: center;
-  font-size: 16px;
-  letter-spacing: 1.5px;
-  color: #ffffff;
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 20px;
+}
+
+.section-header h2 {
+  font-size: 16px;
+  letter-spacing: 1px;
+  color: #ffffff;
   font-weight: 600;
 }
 
 /* ==========================================
-   COLUMNAS DE AMBIENTES (UAT, PROD-1, PROD)
+   ESTILOS DE BOTONES
    ========================================== */
-.environments-container {
+.btn {
+  border: none;
+  border-radius: 20px;
+  padding: 6px 18px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn:hover {
+  filter: brightness(0.9);
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-secondary {
+  background-color: #ffffff;
+  color: #0a2b3a;
+}
+
+.btn-outline {
+  background-color: #ffffff;
+  color: #0a2b3a;
+  border: 1px solid #ffffff;
+}
+
+/* Toggle (Conservado/Descartado) */
+.btn-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  transition: background-color 0.2s ease;
+}
+
+/* Estado: Conservado */
+.btn-toggle.status-preserved .icon {
+  color: #28a745;
+  font-size: 16px;
+}
+.btn-toggle.status-preserved .label {
+  color: #28a745;
+}
+
+/* Estado: Descartado */
+.btn-toggle.status-discarded .icon {
+  color: #dc3545;
+  font-size: 16px;
+}
+.btn-toggle.status-discarded .label {
+  color: #dc3545;
+}
+
+/* Botón Principal de Autorización */
+.btn-authorize {
+  background-color: #e8f000;
+  color: #000000;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 10px 45px;
+  border-radius: 25px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* ==========================================
+   INTERFAZ 1: COLUMNAS DE AMBIENTES (NEW FLOW)
+   ========================================== */
+.environments-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: 25px;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
 }
 
 .env-card {
@@ -86,55 +180,41 @@ body {
   color: #000000;
   border-radius: 16px;
   padding: 20px;
-  min-height: 420px;
+  min-height: 380px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-  display: flex;
-  flex-direction: column;
-  transition: all 0.3s ease;
-}
-
-.env-card.env-card-selected {
-  background-color: #cff7fc;
-  border: 3px solid #0099ff;
-  box-shadow: 0 0 15px rgba(0, 153, 255, 0.4);
 }
 
 .env-title {
   text-align: center;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   color: #0a2b3a;
-  margin-bottom: 20px;
+  margin-bottom: 15px;
 }
 
-/* ==========================================
-   GRUPOS DE BUNDLES Y NICKNAMES
-   ========================================== */
 .nickname-group {
-  margin-bottom: 20px;
-  font-size: 12px;
+  margin-bottom: 15px;
   font-family: monospace;
+  font-size: 12px;
 }
 
 .nickname-label {
   font-weight: bold;
   font-size: 13px;
   display: block;
-  margin-bottom: 4px;
   color: #000000;
+  margin-bottom: 4px;
 }
 
 .bundle-list {
   list-style: none;
-  padding-left: 10px;
-  margin-bottom: 8px;
+  padding-left: 12px;
+  margin-bottom: 4px;
 }
 
 .bundle-list li {
-  margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  margin-bottom: 2px;
+  color: #333333;
 }
 
 .bundle-list li::before {
@@ -146,79 +226,83 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
   margin-top: 4px;
-}
-
-.bundle-target {
   font-weight: 500;
 }
 
 /* ==========================================
-   ESTILOS DE BOTONES & ESTADOS
+   INTERFAZ 2 & 3: TABLAS DE HISTÓRICO Y LEGACY
    ========================================== */
-.btn {
-  border: none;
-  border-radius: 20px;
-  padding: 4px 16px;
-  font-weight: bold;
-  font-size: 12px;
-  cursor: pointer;
-  transition:
-    transform 0.1s ease,
-    filter 0.2s ease;
+.table-card {
+  background-color: #ffffff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  margin-bottom: 20px;
 }
 
-.btn:hover {
-  filter: brightness(0.95);
-}
-
-.btn:active {
-  transform: scale(0.98);
-}
-
-/* Estado 1: Preservar */
-.btn-preserve,
-.btn[data-state="preserve"] {
-  background-color: #e8f000;
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
   color: #000000;
+  text-align: left;
 }
 
-/* Estado 2: Revertir */
-.btn-revert,
-.btn[data-state="revert"] {
-  background-color: #ff6600;
+.data-table thead {
+  background-color: #0a2b3a;
   color: #ffffff;
 }
 
-/* Botón de Acción Principal */
-.btn-authorize {
-  background-color: #e8f000;
-  color: #000000;
-  font-size: 16px;
-  padding: 10px 45px;
-  border-radius: 25px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+.data-table th {
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.data-table td {
+  padding: 15px 20px;
+  font-size: 13px;
+  vertical-align: top;
+  border-bottom: 1px solid #eaeaea;
+}
+
+.cell-server,
+.cell-project {
+  font-weight: bold;
+  font-family: monospace;
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-family: monospace;
 }
 
 /* ==========================================
-   PIE DE PÁGINA Y MÉTRICAS
+   PIE DE PÁGINA Y MÉTRICAS 
    ========================================== */
 .app-footer {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   margin-top: auto;
-  padding-top: 10px;
+  padding-top: 15px;
 }
 
 .metrics-summary p {
-  font-size: 15px;
+  font-size: 14px;
   color: #ffffff;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   font-weight: 500;
 }
 
 .metrics-summary strong {
   font-weight: 700;
+}
+
+.action-container {
+  display: flex;
+  align-items: center;
 }
