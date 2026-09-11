@@ -146,13 +146,13 @@
       </section>
 
       <!-- ========================================== -->
-      <!-- INTERFAZ 2: NEW FLOW - HISTÓRICO          -->
+      <!-- INTERFAZ 2: NEW FLOW - HISTÓRICO           -->
       <!-- ========================================== -->
       <section id="view-new-flow-history" class="view-section hidden">
         <div class="section-header">
           <h2>NEW FLOW | Histórico de Proyectos por Ambiente</h2>
           <button id="btn-select-env" class="btn btn-outline">
-            Seleccionar ambiente
+            Regresar a revisión
           </button>
         </div>
 
@@ -166,7 +166,7 @@
                 <th>Estatus final</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="tbody-new-history">
               <tr>
                 <td class="cell-server">SKUD</td>
                 <td class="cell-project">PROYECTO_DATA_1</td>
@@ -183,6 +183,50 @@
                       <span class="label">Conservado</span>
                     </button>
                   </div>
+                  <div class="version-row">
+                    <span class="version-name"
+                      >PROYECTO_DATA_1/2026-11-12-1010</span
+                    >
+                    <button
+                      class="btn-toggle status-discarded"
+                      data-state="discard"
+                      data-size-bytes="8589934592"
+                    >
+                      <span class="icon">&#10008;</span>
+                      <span class="label">Descartado</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- INTERFAZ 3: LEGACY FLOW - REVISIÓN         -->
+      <!-- ========================================== -->
+      <section id="view-legacy-flow" class="view-section hidden">
+        <div class="section-header">
+          <h2>LEGACY FLOW | Versionamiento de Proyectos</h2>
+          <button id="btn-go-legacy-history" class="btn btn-outline">
+            Consultar histórico
+          </button>
+        </div>
+
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Proyecto</th>
+                <th>Versiones</th>
+                <th>Estatus final</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-legacy-main">
+              <tr>
+                <td class="cell-project">PROYECTO_DATA_1</td>
+                <td class="cell-versions" colspan="2">
                   <div class="version-row">
                     <span class="version-name"
                       >PROYECTO_DATA_1/2026-11-12-1010</span
@@ -216,11 +260,14 @@
       </section>
 
       <!-- ========================================== -->
-      <!-- INTERFAZ 3: LEGACY FLOW                    -->
+      <!-- INTERFAZ 4: LEGACY FLOW - HISTÓRICO (NUEVA) -->
       <!-- ========================================== -->
-      <section id="view-legacy-flow" class="view-section hidden">
+      <section id="view-legacy-flow-history" class="view-section hidden">
         <div class="section-header">
-          <h2>LEGACY FLOW | Versionamiento de Proyectos</h2>
+          <h2>LEGACY FLOW | Histórico de Proyectos</h2>
+          <button id="btn-back-legacy-main" class="btn btn-outline">
+            Regresar a revisión
+          </button>
         </div>
 
         <div class="table-card">
@@ -228,41 +275,12 @@
             <thead>
               <tr>
                 <th>Proyecto</th>
-                <th>Versiones</th>
+                <th>Versiones procesadas</th>
                 <th>Estatus final</th>
               </tr>
             </thead>
-            <tbody>
-              <tr>
-                <td class="cell-project">PROYECTO_DATA_1</td>
-                <td class="cell-versions" colspan="2">
-                  <div class="version-row">
-                    <span class="version-name"
-                      >PROYECTO_DATA_1/2026-11-12-1010</span
-                    >
-                    <button
-                      class="btn-toggle status-discarded"
-                      data-state="discard"
-                      data-size-bytes="8589934592"
-                    >
-                      <span class="icon">&#10008;</span>
-                      <span class="label">Descartado</span>
-                    </button>
-                  </div>
-                  <div class="version-row">
-                    <span class="version-name"
-                      >PROYECTO_DATA_1/2026-11-12-1010</span
-                    >
-                    <button
-                      class="btn-toggle status-preserved"
-                      data-state="preserve"
-                    >
-                      <span class="icon">&#10004;</span>
-                      <span class="label">Conservado</span>
-                    </button>
-                  </div>
-                </td>
-              </tr>
+            <tbody id="tbody-legacy-history">
+              <!-- Renderizado dinámico desde la API get-historico -->
             </tbody>
           </table>
         </div>

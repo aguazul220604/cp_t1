@@ -1,230 +1,264 @@
 document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
-  // CONFIGURACIÓN Y ESTADO INICIAL
+  // 1. GESTIÓN DE VISTAS Y NAVEGACIÓN
   // ==========================================
-  let totalSpaceBytes = 0;
-  let freeSpaceBytes = 0;
-  // Vistas
-  const viewNewFlowMain = document.getElementById("view-new-flow-main");
-  const viewNewFlowHistory = document.getElementById("view-new-flow-history");
-  const viewLegacyFlow = document.getElementById("view-legacy-flow");
+  const views = {
+    newMain: document.getElementById("view-new-flow-main"),
+    newHistory: document.getElementById("view-new-flow-history"),
+    legacyMain: document.getElementById("view-legacy-flow"),
+    legacyHistory: document.getElementById("view-legacy-flow-history"),
+  };
 
-  // Botones de Navegación
-  const btnSwitchFlow = document.getElementById("btn-switch-flow");
-  const btnGoHistory = document.getElementById("btn-go-history");
-  const btnSelectEnv = document.getElementById("btn-select-env");
-  const btnAuthorize = document.getElementById("btn-authorize");
+  let currentFlow = "NEW"; // "NEW" o "LEGACY"
 
-  // Elementos de Métricas
-  const elTotalSpace = document.getElementById("metric-total-space");
-  const elFreeSpace = document.getElementById("metric-free-space");
-  const elResultSpace = document.getElementById("metric-result-space");
+  function switchView(targetView) {
+    Object.values(views).forEach((view) => {
+      if (view) view.classList.add("hidden");
+    });
+    if (targetView) targetView.classList.remove("hidden");
+  }
 
-  // Valores base de métricas
-  let totalSpace = 80;
-  let freeSpace = 16;
-  let resultSpace = totalSpace - freeSpace;
+  // Botón Global: Cambiar flujo (NEW <-> LEGACY)
+  document.getElementById("btn-switch-flow")?.addEventListener("click", () => {
+    if (currentFlow === "NEW") {
+      currentFlow = "LEGACY";
+      switchView(views.legacyMain);
+      loadLegacyData();
+    } else {
+      currentFlow = "NEW";
+      switchView(views.newMain);
+      loadNewFlowData();
+    }
+  });
 
-  // Estado del flujo actual ('NEW' / 'LEGACY')
-  let currentFlow = "NEW";
+  // Navegación dentro de NEW FLOW
+  document.getElementById("btn-go-history")?.addEventListener("click", () => {
+    switchView(views.newHistory);
+    loadHistoryData("NEW");
+  });
+
+  document.getElementById("btn-select-env")?.addEventListener("click", () => {
+    switchView(views.newMain);
+  });
+
+  // Navegación dentro de LEGACY FLOW
+  document
+    .getElementById("btn-go-legacy-history")
+    ?.addEventListener("click", () => {
+      switchView(views.legacyHistory);
+      loadHistoryData("LEGACY");
+    });
+
+  document
+    .getElementById("btn-back-legacy-main")
+    ?.addEventListener("click", () => {
+      switchView(views.legacyMain);
+    });
 
   // ==========================================
-  // FUNCIÓN: Actualizar Métricas
+  // 2. LÓGICA DE BOTONES DE ESTADO (CONSERVAR/DESCARTAR)
   // ==========================================
-  // 1. Obtener datos de S3
-  function fetchS3Data() {
-    fetch("/api/get-s3-bundles")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.status === "SUCCESS") {
-          totalSpaceBytes = data.metrics.totalSpaceGB * 1024 ** 3;
-          freeSpaceBytes = data.metrics.freeSpaceGB * 1024 ** 3;
+  document.addEventListener("click", (e) => {
+    const button = e.target.closest(".btn-toggle");
+    if (!button) return;
 
-          // Renderizar dinámicamente
-          renderS3Items(data.items);
-          updateMetricsDisplay();
+    const currentState = button.getAttribute("data-state");
+    const isPreserved = currentState === "preserve";
+
+    if (isPreserved) {
+      // Cambiar a Descartado
+      button.setAttribute("data-state", "discard");
+      button.className = "btn-toggle status-discarded";
+      button.querySelector(".icon").innerHTML = "&#10008;";
+      button.querySelector(".label").textContent = "Descartado";
+    } else {
+      // Cambiar a Conservado
+      button.setAttribute("data-state", "preserve");
+      button.className = "btn-toggle status-preserved";
+      button.querySelector(".icon").innerHTML = "&#10004;";
+      button.querySelector(".label").textContent = "Conservado";
+    }
+
+    recalculateMetrics();
+  });
+
+  // ==========================================
+  // 3. RECÁLCULO DINÁMICO DE MÉTRICAS DE ESPACIO
+  // ==========================================
+  function recalculateMetrics() {
+    let bytesToFree = 0;
+
+    // Seleccionar solo los botones de la vista activa
+    const activeView = Object.values(views).find(
+      (v) => !v.classList.contains("hidden"),
+    );
+    if (!activeView) return;
+
+    const discardButtons = activeView.querySelectorAll(
+      '.btn-toggle[data-state="discard"]',
+    );
+
+    discardButtons.forEach((btn) => {
+      const bytes = parseFloat(btn.getAttribute("data-size-bytes") || "0");
+      bytesToFree += bytes;
+    });
+
+    // Valores de ejemplo iniciales (pueden venir de API)
+    const totalSizeBytes = 80 * 1024 * 1024 * 1024; // 80 GB
+    const freeSizeBytes = bytesToFree;
+    const resultSizeBytes = totalSizeBytes - freeSizeBytes;
+
+    document.getElementById("metric-total-space").textContent =
+      formatBytes(totalSizeBytes);
+    document.getElementById("metric-free-space").textContent =
+      formatBytes(freeSizeBytes);
+    document.getElementById("metric-result-space").textContent =
+      formatBytes(resultSizeBytes);
+  }
+
+  function formatBytes(bytes) {
+    if (bytes === 0) return "0 GB";
+    const gb = bytes / (1024 * 1024 * 1024);
+    return gb.toFixed(2) + " GB";
+  }
+
+  // ==========================================
+  // 4. INTEGRACIÓN CON BACKEND (FETCH API)
+  // ==========================================
+
+  // Cargar datos iniciales de New Flow
+  async function loadNewFlowData() {
+    try {
+      const response = await fetch("/extension-api/get-bundles-new");
+      const data = await response.json();
+      // Lógica para actualizar las tarjetas UAT/PROD-1 dinámicamente si aplica
+      recalculateMetrics();
+    } catch (error) {
+      console.error("Error cargando bundles de New Flow:", error);
+    }
+  }
+
+  // Cargar datos iniciales de Legacy Flow
+  async function loadLegacyData() {
+    try {
+      const response = await fetch("/extension-api/get-bundles-legacy");
+      const data = await response.json();
+      // Lógica para renderizar tbody-legacy-main
+      recalculateMetrics();
+    } catch (error) {
+      console.error("Error cargando bundles de Legacy Flow:", error);
+    }
+  }
+
+  // Cargar Históricos (API genérica por flujo)
+  async function loadHistoryData(flowType) {
+    try {
+      const response = await fetch(
+        `/extension-api/get-historico?flow=${flowType}`,
+      );
+      const historyList = await response.json();
+
+      const targetTbodyId =
+        flowType === "NEW" ? "tbody-new-history" : "tbody-legacy-history";
+      const tbody = document.getElementById(targetTbodyId);
+
+      if (!tbody) return;
+      tbody.innerHTML = "";
+
+      historyList.forEach((item) => {
+        const tr = document.createElement("tr");
+        if (flowType === "NEW") {
+          tr.innerHTML = `
+                        <td class="cell-server">${item.server}</td>
+                        <td class="cell-project">${item.project}</td>
+                        <td class="cell-versions" colspan="2">
+                            <div class="version-row">
+                                <span class="version-name">${item.version}</span>
+                                <button class="btn-toggle status-${item.status.toLowerCase()}" data-state="${item.status.toLowerCase()}">
+                                    <span class="icon">${item.status === "preserve" ? "&#10004;" : "&#10008;"}</span>
+                                    <span class="label">${item.status === "preserve" ? "Conservado" : "Descartado"}</span>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+        } else {
+          tr.innerHTML = `
+                        <td class="cell-project">${item.project}</td>
+                        <td class="cell-versions" colspan="2">
+                            <div class="version-row">
+                                <span class="version-name">${item.version}</span>
+                                <button class="btn-toggle status-${item.status.toLowerCase()}" data-state="${item.status.toLowerCase()}">
+                                    <span class="icon">${item.status === "preserve" ? "&#10004;" : "&#10008;"}</span>
+                                    <span class="label">${item.status === "preserve" ? "Conservado" : "Descartado"}</span>
+                                </button>
+                            </div>
+                        </td>
+                    `;
         }
+        tbody.appendChild(tr);
       });
-  }
-
-  // 2. Modificación del Toggle
-  function toggleStatus(button) {
-    const currentState = button.getAttribute("data-state");
-    // Obtener el peso real en bytes del atributo
-    const itemSizeBytes =
-      parseFloat(button.getAttribute("data-size-bytes")) || 0;
-
-    if (currentState === "preserve") {
-      button.setAttribute("data-state", "discard");
-      // ... estilos visuales ...
-      freeSpaceBytes += itemSizeBytes; // Sumar peso real
-    } else {
-      button.setAttribute("data-state", "preserve");
-      // ... estilos visuales ...
-      freeSpaceBytes -= itemSizeBytes; // Restar peso real
+      recalculateMetrics();
+    } catch (error) {
+      console.error(`Error cargando histórico para ${flowType}:`, error);
     }
-
-    updateMetricsDisplay();
   }
 
-  // 3. Renderizar métricas
-  function updateMetricsDisplay() {
-    const resultBytes = totalSpaceBytes - freeSpaceBytes;
+  // Evento de Autorización (Ejecución de la limpieza/subida)
+  document
+    .getElementById("btn-authorize")
+    ?.addEventListener("click", async () => {
+      const activeView = Object.values(views).find(
+        (v) => !v.classList.contains("hidden"),
+      );
+      const itemsToDiscard = [];
 
-    elTotalSpace.textContent = `${(totalSpaceBytes / 1024 ** 3).toFixed(2)} GB`;
-    elFreeSpace.textContent = `${(freeSpaceBytes / 1024 ** 3).toFixed(2)} GB`;
-    elResultSpace.textContent = `${(resultBytes / 1024 ** 3).toFixed(2)} GB`;
-  }
+      activeView
+        .querySelectorAll('.btn-toggle[data-state="discard"]')
+        .forEach((btn) => {
+          const container =
+            btn.closest(".action-row") || btn.closest(".version-row");
+          const bundleTarget = container
+            ? container.querySelector(".bundle-target")?.textContent ||
+              container.querySelector(".version-name")?.textContent
+            : "";
+          if (bundleTarget) {
+            itemsToDiscard.push(bundleTarget);
+          }
+        });
 
-  // ==========================================
-  // FUNCIÓN: Alternar Estado de Toggle
-  // ==========================================
-  function toggleStatus(button) {
-    const currentState = button.getAttribute("data-state");
-    const iconEl = button.querySelector(".icon");
-    const labelEl = button.querySelector(".label");
+      if (itemsToDiscard.length === 0) {
+        alert("No hay elementos marcados para descartar/eliminar.");
+        return;
+      }
 
-    if (currentState === "preserve") {
-      // Conservado -> Descartado
-      button.setAttribute("data-state", "discard");
-      button.classList.remove("status-preserved");
-      button.classList.add("status-discarded");
+      const confirmAction = confirm(
+        `¿Está seguro de procesar y eliminar ${itemsToDiscard.length} bundles seleccionados?`,
+      );
+      if (!confirmAction) return;
 
-      if (iconEl) iconEl.innerHTML = "&#10008;";
-      if (labelEl) labelEl.textContent = "Descartado";
+      try {
+        const response = await fetch("/extension-api/authorize-cleanup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            flow: currentFlow,
+            targets: itemsToDiscard,
+          }),
+        });
 
-      // Al descartar, incrementa el espacio a liberar
-      freeSpace += BUNDLE_SIZE_GB;
-    } else {
-      // Descartado -> Conservado
-      button.setAttribute("data-state", "preserve");
-      button.classList.remove("status-discarded");
-      button.classList.add("status-preserved");
-
-      if (iconEl) iconEl.innerHTML = "&#10004;";
-      if (labelEl) labelEl.textContent = "Conservado";
-
-      // Al conservar, disminuye el espacio a liberar
-      freeSpace -= BUNDLE_SIZE_GB;
-    }
-
-    updateMetricsDisplay();
-  }
-
-  // ==========================================
-  // NAVEGACIÓN ENTRE VISTAS
-  // ==========================================
-  function showView(viewToShow) {
-    [viewNewFlowMain, viewNewFlowHistory, viewLegacyFlow].forEach((view) => {
-      if (view) {
-        view.classList.remove("active");
-        view.classList.add("hidden");
+        const result = await response.json();
+        if (result.status === "success") {
+          alert("Proceso de limpieza ejecutado correctamente.");
+          location.reload();
+        } else {
+          alert("Error al ejecutar la limpieza: " + result.message);
+        }
+      } catch (error) {
+        console.error("Error al enviar autorización:", error);
+        alert("Error de comunicación con el backend.");
       }
     });
 
-    if (viewToShow) {
-      viewToShow.classList.remove("hidden");
-      viewToShow.classList.add("active");
-    }
-  }
-
-  // Cambiar entre NEW FLOW y LEGACY FLOW desde el Header
-  btnSwitchFlow.addEventListener("click", () => {
-    if (currentFlow === "NEW") {
-      currentFlow = "LEGACY";
-      showView(viewLegacyFlow);
-      btnSwitchFlow.textContent = "Ver New Flow";
-    } else {
-      currentFlow = "NEW";
-      showView(viewNewFlowMain);
-      btnSwitchFlow.textContent = "Seleccionar flujo";
-    }
-  });
-
-  // Ir al Histórico de New Flow
-  btnGoHistory.addEventListener("click", () => {
-    showView(viewNewFlowHistory);
-  });
-
-  // Alternar Filtro de Ambiente en Histórico (UAT / PROD-1)
-  btnSelectEnv.addEventListener("click", () => {
-    const currentText = btnSelectEnv.textContent;
-    if (currentText.includes("PROD-1")) {
-      btnSelectEnv.textContent = "Ambiente: UAT";
-    } else {
-      btnSelectEnv.textContent = "Ambiente: PROD-1";
-    }
-  });
-
-  // ==========================================
-  // EVENT DELEGATION PARA TOGGLES DE ESTADO
-  // ==========================================
-  document.addEventListener("click", (e) => {
-    const toggleBtn = e.target.closest(".btn-toggle");
-    if (toggleBtn) {
-      toggleStatus(toggleBtn);
-    }
-  });
-
-  // ==========================================
-  // EVENTO: AUTORIZAR
-  // ==========================================
-  btnAuthorize.addEventListener("click", () => {
-    const itemsToPreserve = [];
-    const itemsToDiscard = [];
-
-    const activeSection = document.querySelector(".view-section.active");
-    if (activeSection) {
-      const toggleButtons = activeSection.querySelectorAll(".btn-toggle");
-      toggleButtons.forEach((btn) => {
-        const state = btn.getAttribute("data-state");
-        const parentRow = btn.closest(".action-row, .version-row, li");
-        const pathOrName = parentRow
-          ? parentRow.innerText.replace(/\n/g, " ").trim()
-          : "";
-
-        if (pathOrName) {
-          if (state === "preserve") itemsToPreserve.push(pathOrName);
-          if (state === "discard") itemsToDiscard.push(pathOrName);
-        }
-      });
-    }
-
-    const payload = {
-      timestamp: new Date().toISOString(),
-      activeFlow: currentFlow,
-      metrics: { totalSpace, freeSpace, resultSpace },
-      details: {
-        preserveList: itemsToPreserve,
-        discardList: itemsToDiscard,
-      },
-    };
-
-    // Enviar datos al Backend
-    fetch("/api/authorize-cleanup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.status === "SUCCESS") {
-          alert(
-            `Limpieza autorizada\n\n` +
-              `Archivos eliminados en S3: ${data.deletedCount}\n` +
-              `Archivos preservados: ${data.preservedCount}\n` +
-              `Reporte CSV generado: ${data.reportFileName}`,
-          );
-          location.reload(); // Recargar
-        } else {
-          alert(`Error en la ejecución: ${data.message}`);
-        }
-      })
-      .catch((err) =>
-        console.error("Error al conectar con backend Python:", err),
-      );
-  });
-
-  // Inicializar display de métricas
-  updateMetricsDisplay();
+  // Inicialización
+  recalculateMetrics();
 });
