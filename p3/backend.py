@@ -12,7 +12,7 @@ S3_FOLDER_NAME = "S3_Bundle_Backup_Path"
 PERSISTENCE_DATASET_NAME = "bundles_cleanup_history"
 REPORTS_FOLDER_NAME = "Cleanup_Reports_Folder"
 
-RETENTION_MONTHS = 6  # ventana fija de revisión: últimos 6 meses desde hoy
+RETENTION_MONTHS = 6  # Archivos creados HACE MÁS de 6 meses entran a limpieza
 
 PERSISTENCE_COLUMNS = [
     "execution_timestamp", "flow", "environment", "server", "project",
@@ -28,21 +28,8 @@ s3_folder = dataiku.Folder(S3_FOLDER_NAME)
 
 def parse_legacy_path(path):
     """
-    Estructura real generada por el script de backup (Legacy):
+    Estructura Legacy en S3:
         {project_name}/project_bundles/{remaining_path}
-
-    NOTA 1: remaining_path conserva la estructura original en disco y NO
-    garantiza traer una fecha en el nombre; por eso el orden temporal se
-    resuelve siempre con la metadata de S3 (lastModified), nunca con el
-    nombre del archivo.
-
-    NOTA 2:
-      a) si el mismo nombre de proyecto existe en un legacy PROD y en un
-         legacy UAT, sus bundles comparten el mismo prefijo en S3.
-      b) la vista "LEGACY FLOW | Histórico de Proyectos" que agregaron
-         (con columna "Servidor") NO se puede poblar con datos reales
-         mientras el script de backup no escriba esa información en la
-         ruta de S3 
     """
     clean = path.strip('/')
     parts = clean.split('/')
@@ -52,23 +39,31 @@ def parse_legacy_path(path):
     version_label = '/'.join(parts[2:]) if len(parts) > 2 else parts[-1]
     return {
         "flow": "LEGACY",
+        "environment": "N/A",
+        "server": "N/A",
         "project": project,
         "version_label": version_label,
     }
 
-
 def parse_new_path(path):
     """
-    Estructura generada por el script de backup (New):
+    Estructura estricta para New Flow en S3:
         dataiku/{environment}/{server}/{project}/{timestamp}.zip
-    Confirmado con datos reales: el nombre del archivo ya trae la fecha.
     """
     clean = path.strip('/')
     parts = clean.split('/')
+    
+    # Validar que tenga exactamente el formato esperado
     if len(parts) < 5 or parts[0] != 'dataiku':
         return None
-    _, environment, server, project, filename = parts[:5]
+    
+    environment = parts[1]
+    server = parts[2]
+    project = parts[3]
+    filename = parts[4]
+    
     version_label = filename.replace('.zip', '')
+    
     return {
         "flow": "NEW",
         "environment": environment,
@@ -76,7 +71,6 @@ def parse_new_path(path):
         "project": project,
         "version_label": version_label,
     }
-
 
 def parse_path(path, flow):
     if flow == "LEGACY":
@@ -87,9 +81,6 @@ def parse_path(path, flow):
 
 
 def group_key(parsed):
-    """Clave de agrupación: en Legacy solo por proyecto; en New por
-    ambiente + servidor + proyecto (el mismo nombre de proyecto puede
-    repetirse entre servidores/ambientes distintos)."""
     if parsed["flow"] == "LEGACY":
         return (parsed["project"],)
     return (parsed["environment"], parsed["server"], parsed["project"])
@@ -100,21 +91,6 @@ def group_key(parsed):
 # ==========================================
 
 def load_persistence_df():
-    """
-    Lee el dataset de persistencia de forma segura.
-
-    A diferencia de la versión anterior, aquí NO se asume que cualquier
-    excepción significa "dataset vacío, es la primera corrida" -- solo se
-    trata como tal un error cuyo mensaje indique que el dataset todavía no
-    tiene schema definido (nunca se ha escrito nada en él). Cualquier otro
-    error se re-lanza, para no arriesgar sobrescribir el histórico real.
-
-    RECOMENDACIÓN: para eliminar esta ambigüedad por completo, inicializa
-    el dataset una sola vez escribiendo un DataFrame vacío con
-    PERSISTENCE_COLUMNS antes de la primera ejecución real. Así
-    get_dataframe() siempre regresará un DataFrame válido (con 0 filas la
-    primera vez) y este bloque heurístico deja de ser necesario.
-    """
     dataset = dataiku.Dataset(PERSISTENCE_DATASET_NAME)
     try:
         df = dataset.get_dataframe()
@@ -129,9 +105,6 @@ def load_persistence_df():
 
 
 def get_already_processed_paths(df, flow):
-    """Rutas que ya tienen una decisión registrada (PRESERVED o DELETED)
-    en una ejecución previa, para no volver a mostrarlas en la revisión
-    de la corrida actual."""
     if df.empty:
         return set()
     subset = df[(df["flow"] == flow) & (df["status"].isin(["PRESERVED", "DELETED"]))]
@@ -149,39 +122,37 @@ def get_s3_bundles():
             return jsonify({"status": "ERROR", "message": "flow debe ser LEGACY o NEW"}), 400
 
         now = datetime.now(timezone.utc)
-        window_start = now - relativedelta(months=RETENTION_MONTHS)
+        # Umbral: 6 meses hacia atrás desde hoy
+        cutoff_date = now - relativedelta(months=RETENTION_MONTHS)
 
         persistence_df = load_persistence_df()
         already_processed = get_already_processed_paths(persistence_df, flow)
 
         paths = s3_folder.list_paths_in_partition()
 
-        # Agrupamos primero, para poder decidir "más reciente por grupo"
         groups = {}
         total_bytes = 0
 
         for p in paths:
             parsed = parse_path(p, flow)
-            if parsed is None:
-                continue  # ruta que no corresponde a este flujo
-
-            if p in already_processed:
-                continue  # ya tiene una decisión registrada en una corrida previa
+            if parsed is None or p in already_processed:
+                continue
 
             details = s3_folder.get_path_details(p)
             size_bytes = details.get('size', 0)
             last_modified_ms = details.get('lastModified', 0)
             file_date = datetime.fromtimestamp(last_modified_ms / 1000.0, tz=timezone.utc)
 
-            if file_date < window_start:
-                continue  # fuera de la ventana de revisión de 6 meses
+            # FILTRO CORREGIDO: Se incluyen los archivos creados HACE MÁS DE 6 MESES (> 6 meses de antigüedad)
+            if file_date > cutoff_date:
+                continue
 
             item = {
                 "path": p,
                 "sizeBytes": size_bytes,
-                "sizeGB": round(size_bytes / (1024 ** 3), 2),
+                "sizeGB": round(size_bytes / (1024 ** 3), 4),
                 "fileDate": file_date.strftime("%Y-%m-%d %H:%M:%S"),
-                "_fileDateRaw": file_date,  # solo para ordenar, se retira antes de responder
+                "_fileDateRaw": file_date,
                 "versionLabel": parsed["version_label"],
             }
 
@@ -190,12 +161,17 @@ def get_s3_bundles():
             groups.setdefault(key, {"parsed": parsed, "items": []})
             groups[key]["items"].append(item)
 
-        # Dentro de cada grupo: el más reciente se conserva por defecto
         discard_bytes = 0
         project_groups = []
+        
         for key, group in groups.items():
             items = group["items"]
+            # Ordenar de más reciente a más antiguo
             items.sort(key=lambda it: it["_fileDateRaw"], reverse=True)
+            
+            # REGLA DE NEGOCIO:
+            # La versión más reciente (idx 0) -> Preservada por defecto (isDiscardedByDefault = False)
+            # Las versiones anteriores (idx > 0) -> Descartadas por defecto (isDiscardedByDefault = True)
             for idx, it in enumerate(items):
                 it["isDiscardedByDefault"] = (idx != 0)
                 if it["isDiscardedByDefault"]:
@@ -204,23 +180,33 @@ def get_s3_bundles():
 
             parsed = group["parsed"]
             project_groups.append({
-                "environment": parsed["environment"],
-                "server": parsed["server"],
-                "project": parsed["project"],
+                "environment": parsed.get("environment"),
+                "server": parsed.get("server"),
+                "project": parsed.get("project"),
                 "versions": items,
             })
 
-        return jsonify({
+        # Estructuración para Vista 1 (Separación explícita por Ambientes en New Flow)
+        response_data = {
             "status": "SUCCESS",
             "flow": flow,
-            "retentionWindowStart": window_start.strftime("%Y-%m-%d"),
+            "retentionCutoffDate": cutoff_date.strftime("%Y-%m-%d"),
             "metrics": {
                 "totalSpaceGB": round(total_bytes / (1024 ** 3), 2),
                 "freeSpaceGB": round(discard_bytes / (1024 ** 3), 2),
                 "resultSpaceGB": round((total_bytes - discard_bytes) / (1024 ** 3), 2)
-            },
-            "projects": project_groups
-        }), 200
+            }
+        }
+
+        if flow == "NEW":
+            response_data["environments"] = {
+                "UAT": [p for p in project_groups if p["environment"] == "UAT"],
+                "PROD_1": [p for p in project_groups if p["environment"] in ("PROD-1", "PROD_1")]
+            }
+        else:
+            response_data["projects"] = project_groups
+
+        return jsonify(response_data), 200
 
     except Exception as e:
         return jsonify({"status": "ERROR", "message": str(e)}), 500
@@ -238,24 +224,23 @@ def get_historico():
             return jsonify({"status": "SUCCESS", "flow": flow, "projects": []}), 200
 
         subset = df[df["flow"] == flow].copy()
-        subset = subset.sort_values("execution_timestamp")
+        if subset.empty:
+            return jsonify({"status": "SUCCESS", "flow": flow, "projects": []}), 200
 
+        subset = subset.sort_values("execution_timestamp", ascending=False)
         group_cols = ["environment", "server", "project"] if flow == "NEW" else ["project"]
 
         project_groups = []
-        for key_values, group_df in subset.groupby(group_cols):
+        for key_values, group_df in subset.groupby(group_cols, sort=False):
             if flow == "LEGACY":
-                # con un solo campo de agrupación, pandas regresa el valor
-                # directo (no una tupla) -- si tu versión de pandas se
-                # comporta distinto, ajusta este desempaquetado
-                environment, server, project = None, None, key_values
+                environment, server, project = "N/A", "N/A", key_values
             else:
                 environment, server, project = key_values
 
             versions = [{
                 "s3_path": row["s3_path"],
                 "executionTimestamp": row["execution_timestamp"],
-                "status": row["status"],  # PRESERVED, DELETED, ERROR, NOT_FOUND
+                "status": row["status"],
             } for _, row in group_df.iterrows()]
 
             project_groups.append({
@@ -281,29 +266,27 @@ def authorize_cleanup():
 
         timestamp_str = data.get('timestamp', datetime.now(timezone.utc).isoformat())
         active_flow = data.get('activeFlow', 'UNKNOWN').upper()
-        items_to_discard = data.get('discardList', [])   # lista de s3_path (strings)
-        items_to_preserve = data.get('preserveList', [])  # lista de s3_path (strings)
+        items_to_discard = data.get('discardList', [])    # Lista de s3_path
+        items_to_preserve = data.get('preserveList', [])  # Lista de s3_path
 
-        # --- Validación: ningún proyecto debe quedar en cero versiones conservadas ---
+        # Validación: Ningún proyecto puede quedar sin al menos 1 versión conservada
         discard_by_group = {}
         for path in items_to_discard:
             parsed = parse_path(path, active_flow)
-            if parsed is None:
-                continue
-            discard_by_group.setdefault(group_key(parsed), []).append(path)
+            if parsed:
+                discard_by_group.setdefault(group_key(parsed), []).append(path)
 
         preserve_by_group = {}
         for path in items_to_preserve:
             parsed = parse_path(path, active_flow)
-            if parsed is None:
-                continue
-            preserve_by_group.setdefault(group_key(parsed), []).append(path)
+            if parsed:
+                preserve_by_group.setdefault(group_key(parsed), []).append(path)
 
         empty_groups = [key for key in discard_by_group if not preserve_by_group.get(key)]
         if empty_groups:
             return jsonify({
                 "status": "REJECTED",
-                "message": "Hay proyectos que quedarían sin ninguna versión conservada.",
+                "message": "Operación cancelada: Existen proyectos que quedarían completamente sin versiones conservadas.",
                 "affectedGroups": [list(k) for k in empty_groups]
             }), 409
 
@@ -330,11 +313,11 @@ def authorize_cleanup():
             deleted_records.append({
                 "execution_timestamp": timestamp_str,
                 "flow": active_flow,
-                "environment": parsed.get("environment"),
-                "server": parsed.get("server"),
-                "project": parsed.get("project"),
+                "environment": parsed.get("environment", "N/A"),
+                "server": parsed.get("server", "N/A"),
+                "project": parsed.get("project", "N/A"),
                 "s3_path": clean_s3_path,
-                "file_date": None,
+                "file_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 "status": status,
                 "error_message": error_message,
             })
@@ -348,11 +331,11 @@ def authorize_cleanup():
             preserved_records.append({
                 "execution_timestamp": timestamp_str,
                 "flow": active_flow,
-                "environment": parsed.get("environment"),
-                "server": parsed.get("server"),
-                "project": parsed.get("project"),
+                "environment": parsed.get("environment", "N/A"),
+                "server": parsed.get("server", "N/A"),
+                "project": parsed.get("project", "N/A"),
                 "s3_path": clean_s3_path,
-                "file_date": None,
+                "file_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 "status": "PRESERVED",
                 "error_message": None,
             })
@@ -365,7 +348,7 @@ def authorize_cleanup():
             df_final = pd.concat([df_existing, df_new_records], ignore_index=True)
             dataiku.Dataset(PERSISTENCE_DATASET_NAME).write_with_schema(df_final)
 
-        # --- Reporte CSV: se guarda en Managed Folder Y se regresa en base64 ---
+        # Generación de reporte CSV
         report_filename = f"reporte_limpieza_{active_flow}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         df_report = pd.DataFrame(all_event_records)
         csv_bytes = df_report.to_csv(index=False).encode('utf-8')
@@ -374,13 +357,13 @@ def authorize_cleanup():
             reports_folder = dataiku.Folder(REPORTS_FOLDER_NAME)
             reports_folder.upload_stream(report_filename, csv_bytes)
         except Exception as repo_err:
-            print(f"No se pudo guardar el reporte en la carpeta de reportes: {repo_err}")
+            print(f"Error al guardar reporte en Managed Folder: {repo_err}")
 
         report_base64 = base64.b64encode(csv_bytes).decode('utf-8')
 
         return jsonify({
             "status": "SUCCESS",
-            "message": "Limpieza y reporte procesados correctamente.",
+            "message": "Limpieza realizada con éxito y registros guardados.",
             "deletedCount": len([r for r in deleted_records if r['status'] == 'DELETED']),
             "preservedCount": len(preserved_records),
             "errors": errors,

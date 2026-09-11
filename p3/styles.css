@@ -1,308 +1,298 @@
 /* ==========================================
-   RESET & ESTILOS BASE
+   1. VARIABLES Y CONFIGURACIÓN GENERAL
    ========================================== */
+:root {
+  --bg-main: #0b3c4d; /* Azul petróleo oscuro del fondo */
+  --bg-card: #ffffff; /* Blanco para contenedores */
+  --bg-header-bar: #0b3c4d; /* Header secundario */
+  --text-white: #ffffff;
+  --text-dark: #1a1a1a;
+  --text-muted: #7f8c8d;
+
+  /* Colores de Estatus */
+  --status-discard-bg: #e74c3c; /* Rojo para descartado */
+  --status-preserve-bg: #2ecc71; /* Verde para conservado */
+
+  /* Botones de Acción */
+  --btn-yellow: #ffe600; /* Amarillo del botón Autorizar */
+  --btn-yellow-hover: #e6d000;
+  --btn-pill-bg: #ffffff;
+  --btn-pill-text: #0b3c4d;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
 }
 
 body {
-  background-color: #0b3344;
-  color: #ffffff;
+  background-color: var(--bg-main);
+  color: var(--text-white);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  padding: 20px 40px;
 }
 
-/* Control de Visibilidad */
-.view-section {
-  display: none;
-  width: 100%;
-}
-
-.view-section.active {
-  display: block; /* Mostrar la sección activa */
-}
-
-.view-section.hidden {
+.hidden {
   display: none !important;
 }
 
 /* ==========================================
-   ENCABEZADO PRINCIPAL 
+   2. HEADER GLOBAL
    ========================================== */
-.app-header {
-  padding: 15px 30px;
-  background-color: #0a2b3a;
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
-.brand-container {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.brand-logo {
-  flex-shrink: 0;
-}
-
-.brand-text .sub-heading {
+.header-titles .subtitle {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
   display: block;
-  font-size: 12px;
-  color: #b0c4de;
-  font-weight: 300;
+  margin-bottom: 4px;
 }
 
-.brand-text .main-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #ffffff;
+.header-titles .title {
+  font-size: 1.25rem;
+  font-weight: 700;
 }
 
-/* ==========================================
-   CONTENEDOR Y ENCABEZADOS DE SECCIÓN
-   ========================================== */
-.app-container {
-  padding: 20px 40px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.section-header h2 {
-  font-size: 16px;
-  letter-spacing: 1px;
-  color: #ffffff;
-  font-weight: 600;
-}
-
-/* ==========================================
-   ESTILOS DE BOTONES
-   ========================================== */
-.btn {
-  border: none;
-  border-radius: 20px;
-  padding: 6px 18px;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn:hover {
-  filter: brightness(0.9);
-}
-
-.btn:active {
-  transform: scale(0.98);
-}
-
+/* Botón Ovalado "Seleccionar flujo" / "Consultar histórico" */
 .btn-secondary {
-  background-color: #ffffff;
-  color: #0a2b3a;
-}
-
-.btn-outline {
-  background-color: #ffffff;
-  color: #0a2b3a;
-  border: 1px solid #ffffff;
-}
-
-/* Toggle (Conservado/Descartado) */
-.btn-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  background-color: var(--btn-pill-bg);
+  color: var(--btn-pill-text);
   border: none;
-  background: transparent;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.85rem;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: bold;
   transition: background-color 0.2s ease;
 }
 
-/* Estado: Conservado */
-.btn-toggle.status-preserved .icon {
-  color: #28a745;
-  font-size: 16px;
-}
-.btn-toggle.status-preserved .label {
-  color: #28a745;
-}
-
-/* Estado: Descartado */
-.btn-toggle.status-discarded .icon {
-  color: #dc3545;
-  font-size: 16px;
-}
-.btn-toggle.status-discarded .label {
-  color: #dc3545;
-}
-
-/* Botón Principal de Autorización */
-.btn-authorize {
-  background-color: #e8f000;
-  color: #000000;
-  font-size: 16px;
-  font-weight: 700;
-  padding: 10px 45px;
-  border-radius: 25px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+.btn-secondary:hover {
+  background-color: #e0e0e0;
 }
 
 /* ==========================================
-   INTERFAZ 1: COLUMNAS DE AMBIENTES (NEW FLOW)
+   3. CONTENEDOR PRINCIPAL Y ENCABEZADOS
    ========================================== */
-.environments-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 25px;
+.content-container {
+  flex: 1;
+  margin-top: 20px;
+}
+
+.view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 20px;
 }
 
-.env-card {
-  background-color: #ffffff;
-  color: #000000;
-  border-radius: 16px;
-  padding: 20px;
-  min-height: 380px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+.view-header h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
-.env-title {
+/* ==========================================
+   4. NEW FLOW: GRID Y TARJETAS
+   ========================================== */
+.grid-environments {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.env-card {
+  background-color: var(--bg-card);
+  border-radius: 12px;
+  padding: 20px;
+  color: var(--text-dark);
+  min-height: 380px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.env-card h3 {
   text-align: center;
-  font-size: 20px;
-  font-weight: 700;
-  color: #0a2b3a;
+  font-size: 1.2rem;
   margin-bottom: 15px;
+  color: var(--bg-main);
 }
 
 .nickname-group {
-  margin-bottom: 15px;
-  font-family: monospace;
-  font-size: 12px;
+  margin-bottom: 20px;
 }
 
-.nickname-label {
-  font-weight: bold;
-  font-size: 13px;
-  display: block;
-  color: #000000;
-  margin-bottom: 4px;
+.nickname-group h4 {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
 }
 
-.bundle-list {
+.nickname-group ul {
   list-style: none;
-  padding-left: 12px;
-  margin-bottom: 4px;
-}
-
-.bundle-list li {
-  margin-bottom: 2px;
-  color: #333333;
-}
-
-.bundle-list li::before {
-  content: "• ";
-  font-weight: bold;
 }
 
 .action-row {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-top: 4px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.bundle-target,
+.version-name {
+  font-family: monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* ==========================================
+   5. BOTONES DE TOGGLE (ESTATUS)
+   ========================================== */
+.btn-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  outline: none;
+}
+
+.btn-toggle .icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.btn-toggle.status-discarded .icon {
+  background-color: var(--status-discard-bg);
+}
+
+.btn-toggle.status-preserved .icon {
+  background-color: var(--status-preserve-bg);
+}
+
+.btn-toggle .label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
   font-weight: 500;
 }
 
 /* ==========================================
-   INTERFAZ 2 & 3: TABLAS DE HISTÓRICO Y LEGACY
+   6. TABLAS (LEGACY Y HISTÓRICOS)
    ========================================== */
 .table-card {
-  background-color: #ffffff;
-  border-radius: 16px;
+  background-color: var(--bg-card);
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-  margin-bottom: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  color: #000000;
   text-align: left;
 }
 
 .data-table thead {
-  background-color: #0a2b3a;
-  color: #ffffff;
+  background-color: #082c38; /* Cabecera oscura dentro del card */
+  color: var(--text-white);
 }
 
 .data-table th {
-  padding: 12px 20px;
-  font-size: 14px;
+  padding: 14px 20px;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 
 .data-table td {
-  padding: 15px 20px;
-  font-size: 13px;
+  padding: 16px 20px;
+  color: var(--text-dark);
   vertical-align: top;
-  border-bottom: 1px solid #eaeaea;
 }
 
-.cell-server,
 .cell-project {
   font-weight: bold;
-  font-family: monospace;
+  font-size: 0.9rem;
+  width: 30%;
+}
+
+.cell-server {
+  font-weight: bold;
+  font-size: 0.9rem;
+  width: 20%;
 }
 
 .version-row {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 4px 0;
-  font-family: monospace;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.version-row:last-child {
+  margin-bottom: 0;
 }
 
 /* ==========================================
-   PIE DE PÁGINA Y MÉTRICAS 
+   7. FOOTER GLOBAL
    ========================================== */
-.app-footer {
+.main-footer {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin-top: auto;
-  padding-top: 15px;
+  margin-top: 30px;
+  padding-top: 10px;
 }
 
-.metrics-summary p {
-  font-size: 14px;
-  color: #ffffff;
+.metrics-panel p {
+  font-size: 0.9rem;
   margin-bottom: 4px;
-  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
 }
 
-.metrics-summary strong {
+.metrics-panel strong {
   font-weight: 700;
 }
 
-.action-container {
-  display: flex;
-  align-items: center;
+/* Botón Amarillo "Autorizar" */
+.btn-primary {
+  background-color: var(--btn-yellow);
+  color: var(--text-dark);
+  border: none;
+  padding: 12px 48px;
+  border-radius: 24px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition:
+    background-color 0.2s ease,
+    transform 0.1s ease;
+}
+
+.btn-primary:hover {
+  background-color: var(--btn-yellow-hover);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
 }

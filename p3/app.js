@@ -37,6 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadHistoryData("NEW");
   });
 
+  // Corrección de texto según maqueta visual: "Seleccionar ambiente"
   document.getElementById("btn-select-env")?.addEventListener("click", () => {
     switchView(views.newMain);
   });
@@ -62,6 +63,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const button = e.target.closest(".btn-toggle");
     if (!button) return;
 
+    // Si el botón está dentro de un historial, deshabilitar toggle (solo lectura)
+    const activeView = getActiveView();
+    if (activeView === views.newHistory || activeView === views.legacyHistory) {
+      return;
+    }
+
     const currentState = button.getAttribute("data-state");
     const isPreserved = currentState === "preserve";
 
@@ -82,18 +89,22 @@ document.addEventListener("DOMContentLoaded", () => {
     recalculateMetrics();
   });
 
+  // Helper para obtener la vista activa
+  function getActiveView() {
+    return Object.values(views).find(
+      (v) => v && !v.classList.contains("hidden"),
+    );
+  }
+
   // ==========================================
   // 3. RECÁLCULO DINÁMICO DE MÉTRICAS DE ESPACIO
   // ==========================================
   function recalculateMetrics() {
     let bytesToFree = 0;
-
-    // Seleccionar solo los botones de la vista activa
-    const activeView = Object.values(views).find(
-      (v) => !v.classList.contains("hidden"),
-    );
+    const activeView = getActiveView();
     if (!activeView) return;
 
+    // Sumar bytes de todos los botones marcados como discard
     const discardButtons = activeView.querySelectorAll(
       '.btn-toggle[data-state="discard"]',
     );
@@ -103,47 +114,118 @@ document.addEventListener("DOMContentLoaded", () => {
       bytesToFree += bytes;
     });
 
-    // Valores de ejemplo iniciales (pueden venir de API)
+    // Base de cálculo inicial (se puede ajustar dinámicamente según API)
     const totalSizeBytes = 80 * 1024 * 1024 * 1024; // 80 GB
     const freeSizeBytes = bytesToFree;
-    const resultSizeBytes = totalSizeBytes - freeSizeBytes;
+    const resultSizeBytes = Math.max(0, totalSizeBytes - freeSizeBytes);
 
-    document.getElementById("metric-total-space").textContent =
-      formatBytes(totalSizeBytes);
-    document.getElementById("metric-free-space").textContent =
-      formatBytes(freeSizeBytes);
-    document.getElementById("metric-result-space").textContent =
-      formatBytes(resultSizeBytes);
+    const totalElem = document.getElementById("metric-total-space");
+    const freeElem = document.getElementById("metric-free-space");
+    const resultElem = document.getElementById("metric-result-space");
+
+    if (totalElem) totalElem.textContent = formatBytes(totalSizeBytes);
+    if (freeElem) freeElem.textContent = formatBytes(freeSizeBytes);
+    if (resultElem) resultElem.textContent = formatBytes(resultSizeBytes);
   }
 
   function formatBytes(bytes) {
-    if (bytes === 0) return "0 GB";
+    if (!bytes || bytes === 0) return "0 GB";
     const gb = bytes / (1024 * 1024 * 1024);
     return gb.toFixed(2) + " GB";
+  }
+
+  // Helper genérico para renderizar un botón de estado con tamaño en bytes
+  function renderToggleButton(status, sizeBytes = 0) {
+    const isPreserve = status.toLowerCase() === "preserve";
+    const stateAttr = isPreserve ? "preserve" : "discard";
+    const classStatus = isPreserve ? "status-preserved" : "status-discarded";
+    const icon = isPreserve ? "&#10004;" : "&#10008;";
+    const label = isPreserve ? "Conservado" : "Descartado";
+
+    return `
+      <button class="btn-toggle ${classStatus}" data-state="${stateAttr}" data-size-bytes="${sizeBytes}">
+        <span class="icon">${icon}</span>
+        <span class="label">${label}</span>
+      </button>
+    `;
   }
 
   // ==========================================
   // 4. INTEGRACIÓN CON BACKEND (FETCH API)
   // ==========================================
 
-  // Cargar datos iniciales de New Flow
+  // Cargar datos principales de New Flow (Servidores UAT y PROD-1)
   async function loadNewFlowData() {
     try {
       const response = await fetch("/extension-api/get-bundles-new");
       const data = await response.json();
-      // Lógica para actualizar las tarjetas UAT/PROD-1 dinámicamente si aplica
+
+      // Mapeo dinámico para contenedores UAT y PROD-1 si se recibe payload
+      if (data && data.environments) {
+        renderNewFlowCards(data.environments);
+      }
       recalculateMetrics();
     } catch (error) {
       console.error("Error cargando bundles de New Flow:", error);
     }
   }
 
-  // Cargar datos iniciales de Legacy Flow
+  // Función de apoyo para renderizar tarjetas UAT y PROD-1
+  function renderNewFlowCards(environments) {
+    const uatContainer = document.getElementById("container-uat-bundles");
+    const prodContainer = document.getElementById("container-prod-bundles");
+
+    if (uatContainer && environments.UAT) {
+      uatContainer.innerHTML = buildEnvironmentCardHTML(environments.UAT);
+    }
+    if (prodContainer && environments["PROD-1"]) {
+      prodContainer.innerHTML = buildEnvironmentCardHTML(
+        environments["PROD-1"],
+      );
+    }
+  }
+
+  function buildEnvironmentCardHTML(serversData) {
+    let html = "";
+    // Iterar nicknames (DKUD, RISP, DISU, DKUU, etc.)
+    Object.keys(serversData).forEach((nickname) => {
+      html += `<div class="nickname-group"><h4>${nickname}</h4><ul>`;
+      serversData[nickname].forEach((item) => {
+        html += `
+          <li class="action-row">
+            <span class="bundle-target">${item.bundle_id || item.name}</span>
+            ${renderToggleButton(item.status || "preserve", item.size_bytes || 0)}
+          </li>
+        `;
+      });
+      html += `</ul></div>`;
+    });
+    return html;
+  }
+
+  // Cargar datos principales de Legacy Flow
   async function loadLegacyData() {
     try {
       const response = await fetch("/extension-api/get-bundles-legacy");
       const data = await response.json();
-      // Lógica para renderizar tbody-legacy-main
+
+      const tbody = document.getElementById("tbody-legacy-main");
+      if (tbody && Array.isArray(data)) {
+        tbody.innerHTML = "";
+        data.forEach((item) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="cell-project">${item.project}</td>
+            <td class="cell-versions" colspan="2">
+              <div class="version-row">
+                <span class="version-name">${item.version}</span>
+                ${renderToggleButton(item.status || "preserve", item.size_bytes || 0)}
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
       recalculateMetrics();
     } catch (error) {
       console.error("Error cargando bundles de Legacy Flow:", error);
@@ -167,33 +249,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
       historyList.forEach((item) => {
         const tr = document.createElement("tr");
+        const sizeBytes = item.size_bytes || 0;
+
         if (flowType === "NEW") {
           tr.innerHTML = `
-                        <td class="cell-server">${item.server}</td>
-                        <td class="cell-project">${item.project}</td>
-                        <td class="cell-versions" colspan="2">
-                            <div class="version-row">
-                                <span class="version-name">${item.version}</span>
-                                <button class="btn-toggle status-${item.status.toLowerCase()}" data-state="${item.status.toLowerCase()}">
-                                    <span class="icon">${item.status === "preserve" ? "&#10004;" : "&#10008;"}</span>
-                                    <span class="label">${item.status === "preserve" ? "Conservado" : "Descartado"}</span>
-                                </button>
-                            </div>
-                        </td>
-                    `;
+            <td class="cell-server">${item.server || item.nickname || ""}</td>
+            <td class="cell-project">${item.project}</td>
+            <td class="cell-versions" colspan="2">
+              <div class="version-row">
+                <span class="version-name">${item.version}</span>
+                ${renderToggleButton(item.status, sizeBytes)}
+              </div>
+            </td>
+          `;
         } else {
           tr.innerHTML = `
-                        <td class="cell-project">${item.project}</td>
-                        <td class="cell-versions" colspan="2">
-                            <div class="version-row">
-                                <span class="version-name">${item.version}</span>
-                                <button class="btn-toggle status-${item.status.toLowerCase()}" data-state="${item.status.toLowerCase()}">
-                                    <span class="icon">${item.status === "preserve" ? "&#10004;" : "&#10008;"}</span>
-                                    <span class="label">${item.status === "preserve" ? "Conservado" : "Descartado"}</span>
-                                </button>
-                            </div>
-                        </td>
-                    `;
+            <td class="cell-project">${item.project}</td>
+            <td class="cell-versions" colspan="2">
+              <div class="version-row">
+                <span class="version-name">${item.version}</span>
+                ${renderToggleButton(item.status, sizeBytes)}
+              </div>
+            </td>
+          `;
         }
         tbody.appendChild(tr);
       });
@@ -207,9 +285,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("btn-authorize")
     ?.addEventListener("click", async () => {
-      const activeView = Object.values(views).find(
-        (v) => !v.classList.contains("hidden"),
-      );
+      const activeView = getActiveView();
+      if (!activeView) return;
+
       const itemsToDiscard = [];
 
       activeView
@@ -221,8 +299,14 @@ document.addEventListener("DOMContentLoaded", () => {
             ? container.querySelector(".bundle-target")?.textContent ||
               container.querySelector(".version-name")?.textContent
             : "";
+
           if (bundleTarget) {
-            itemsToDiscard.push(bundleTarget);
+            itemsToDiscard.push({
+              target: bundleTarget,
+              size_bytes: parseFloat(
+                btn.getAttribute("data-size-bytes") || "0",
+              ),
+            });
           }
         });
 
