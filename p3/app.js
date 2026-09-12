@@ -4,13 +4,11 @@ let currentFlow = "NEW"; // 'NEW' o 'LEGACY'
 let isHistoricView = false; // false = Versionamiento, true = Histórico
 let selectedEnv = "UAT"; // 'UAT' o 'PROD-1' para vistas individuales
 
-// Inicialización de la WebApp
 document.addEventListener("DOMContentLoaded", () => {
   fetchBundles();
   setupEventListeners();
 });
 
-// 1. OBTENER DATOS DEL BACKEND
 async function fetchBundles() {
   try {
     const response = await fetch("/api/get-bundles");
@@ -21,16 +19,13 @@ async function fetchBundles() {
   }
 }
 
-// 2. CONTROLADORES DE NAVEGACIÓN Y EVENTOS
 function setupEventListeners() {
-  // Cambio entre NEW FLOW y LEGACY FLOW
   document.getElementById("btn-select-flow").addEventListener("click", () => {
     currentFlow = currentFlow === "NEW" ? "LEGACY" : "NEW";
-    isHistoricView = false; // Reinicia a la vista principal del flujo
+    isHistoricView = false;
     renderView();
   });
 
-  // Alternar entre Versionamiento e Histórico
   document
     .getElementById("btn-toggle-historic")
     ?.addEventListener("click", () => {
@@ -38,13 +33,11 @@ function setupEventListeners() {
       renderView();
     });
 
-  // Botón principal de Ejecución / Limpieza
   document
     .getElementById("btn-authorize")
     .addEventListener("click", handleAuthorize);
 }
 
-// 3. RENDERIZADO DINÁMICO DE VISTAS (1 a 4)
 function renderView() {
   updateHeaderTitle();
 
@@ -52,23 +45,22 @@ function renderView() {
   container.innerHTML = "";
 
   if (currentFlow === "NEW" && !isHistoricView) {
-    // VISTA 1: NEW FLOW - Versionamiento por Ambiente (UAT vs PROD-1)
+    // Vista 1: NEW FLOW - Versionamiento por Ambiente (UAT vs PROD-1)
     container.appendChild(createDualEnvView());
   } else if (currentFlow === "NEW" && isHistoricView) {
-    // VISTA 2: NEW FLOW - Histórico por Ambiente
+    // Vista 2: NEW FLOW - Histórico por Ambiente
     container.appendChild(createHistoricView("NEW"));
   } else if (currentFlow === "LEGACY" && !isHistoricView) {
-    // VISTA 3: LEGACY FLOW - Versionamiento
+    // Vista 3: LEGACY FLOW - Versionamiento
     container.appendChild(createSingleTableView("LEGACY", false));
   } else if (currentFlow === "LEGACY" && isHistoricView) {
-    // VISTA 4: LEGACY FLOW - Histórico
-    container.appendChild(createSingleTableView("LEGACY", true));
+    // Vista 4: LEGACY FLOW - Histórico
+    container.appendChild(createHistoricView("LEGACY"));
   }
 
   calculateMetrics();
 }
 
-// Actualiza los encabezados de la pantalla según el mockup
 function updateHeaderTitle() {
   const titleElem = document.getElementById("view-title");
   const flowText = currentFlow === "NEW" ? "NEW FLOW" : "LEGACY FLOW";
@@ -78,7 +70,7 @@ function updateHeaderTitle() {
   titleElem.textContent = `${flowText} | ${viewText}`;
 }
 
-// Generador de Vista 1 (Columnas UAT y PROD-1 lado a lado)
+// Vista 1: Doble columna (UAT y PROD-1)
 function createDualEnvView() {
   const wrapper = document.createElement("div");
   wrapper.className = "dual-env-container";
@@ -98,15 +90,16 @@ function createDualEnvView() {
   return wrapper;
 }
 
-// Generador de Tablas para Vistas 2, 3 y 4
-function createSingleTableView(flow, isHistoric) {
+// Vista 2 y 4: Función generadora para Históricos (corrige el ReferenceError)
+function createHistoricView(flow) {
   const wrapper = document.createElement("div");
-  const filtered = allBundles.filter(
-    (b) => b.flow === flow && (isHistoric ? b.status === "Preservado" : true),
-  );
+  wrapper.className = "historic-container";
 
-  // Si es histórico de New Flow, incluye selector de ambiente
-  if (flow === "NEW" && isHistoric) {
+  if (flow === "NEW") {
+    const navDiv = document.createElement("div");
+    navDiv.className = "historic-selector-bar";
+    navDiv.innerHTML = `<label>Seleccionar ambiente: </label>`;
+
     const selector = document.createElement("select");
     selector.innerHTML = `<option value="UAT">UAT</option><option value="PROD-1">PROD-1</option>`;
     selector.value = selectedEnv;
@@ -114,28 +107,47 @@ function createSingleTableView(flow, isHistoric) {
       selectedEnv = e.target.value;
       renderView();
     });
-    wrapper.appendChild(selector);
+    navDiv.appendChild(selector);
+    wrapper.appendChild(navDiv);
   }
 
-  const targetList =
-    flow === "NEW" ? filtered.filter((b) => b.env === selectedEnv) : filtered;
-  wrapper.appendChild(buildBundleListUI(targetList, true));
+  const filtered = allBundles.filter(
+    (b) =>
+      b.flow === flow &&
+      b.status === "Preservado" &&
+      (flow === "NEW" ? b.env === selectedEnv : true),
+  );
+
+  wrapper.appendChild(buildBundleListUI(filtered, true));
   return wrapper;
 }
 
-// Construye los ítems interactivos con botón Toggle (Check/X)
+// Vista 3: Tabla Única para Legacy Flow
+function createSingleTableView(flow, isHistoric) {
+  const wrapper = document.createElement("div");
+  const filtered = allBundles.filter((b) => b.flow === flow);
+  wrapper.appendChild(buildBundleListUI(filtered, false));
+  return wrapper;
+}
+
+// Render de filas con Toggle
 function buildBundleListUI(bundles, showServer = false) {
   const list = document.createElement("div");
   list.className = "bundle-list";
 
+  if (bundles.length === 0) {
+    list.innerHTML =
+      '<p class="empty-msg">No hay elementos registrados en esta vista.</p>';
+    return list;
+  }
+
   bundles.forEach((item) => {
     const row = document.createElement("div");
     row.className = `bundle-row ${item.status.toLowerCase()}`;
-
     const isPreserved = item.status === "Preservado";
 
     row.innerHTML = `
-            ${showServer ? `<span class="col-server">${item.server}</span>` : ""}
+            ${showServer ? `<span class="col-server">${item.server || "N/A"}</span>` : ""}
             <span class="col-project"><strong>${item.project}</strong></span>
             <span class="col-filename">${item.filename}</span>
             <span class="col-size">${item.size_gb} GB</span>
@@ -144,8 +156,7 @@ function buildBundleListUI(bundles, showServer = false) {
             </button>
         `;
 
-    // Evento para cambiar de estado al dar clic
-    row.querySelector(".btn-toggle").addEventListener("click", (e) => {
+    row.querySelector(".btn-toggle").addEventListener("click", () => {
       toggleStatus(item.s3_path);
     });
 
@@ -155,13 +166,11 @@ function buildBundleListUI(bundles, showServer = false) {
   return list;
 }
 
-// 4. CAMBIO DE ESTADO Y RECÁLCULO
 function toggleStatus(s3Path) {
   const item = allBundles.find((b) => b.s3_path === s3Path);
   if (item) {
     item.status = item.status === "Preservado" ? "Descartado" : "Preservado";
 
-    // Guardar estado persistente en background
     fetch("/api/save-selection", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -172,12 +181,14 @@ function toggleStatus(s3Path) {
   }
 }
 
-// 5. CÁLCULO DE MÉTRICAS DEL PIE DE PÁGINA
 function calculateMetrics() {
-  const totalOccupied = allBundles.reduce((acc, curr) => acc + curr.size_gb, 0);
+  const totalOccupied = allBundles.reduce(
+    (acc, curr) => acc + (curr.size_gb || 0),
+    0,
+  );
   const toLiberate = allBundles
     .filter((b) => b.status === "Descartado")
-    .reduce((acc, curr) => acc + curr.size_gb, 0);
+    .reduce((acc, curr) => acc + (curr.size_gb || 0), 0);
   const resulting = totalOccupied - toLiberate;
 
   document.getElementById("stat-total").textContent =
@@ -188,7 +199,6 @@ function calculateMetrics() {
     `${resulting.toFixed(2)} GB`;
 }
 
-// 6. ACCIÓN AUTORIZAR Y DESCARGA AUTOMÁTICA DEL REPORTES
 async function handleAuthorize() {
   if (
     !confirm(
@@ -206,7 +216,6 @@ async function handleAuthorize() {
     });
 
     if (response.ok) {
-      // Recibir el binario CSV devuelto por el backend
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -217,7 +226,7 @@ async function handleAuthorize() {
       a.remove();
 
       alert("Proceso de eliminación completado y reporte descargado.");
-      fetchBundles(); // Recargar datos actualizados
+      fetchBundles();
     } else {
       alert("Ocurrió un error al ejecutar la autorización.");
     }
