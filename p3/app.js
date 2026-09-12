@@ -9,9 +9,20 @@ document.addEventListener("DOMContentLoaded", () => {
   setupEventListeners();
 });
 
+function getBackendUrl(endpoint) {
+  if (typeof dataiku !== "undefined" && dataiku.getWebAppBackendUrl) {
+    return dataiku.getWebAppBackendUrl(endpoint);
+  }
+  return endpoint; // Fallback para entorno local
+}
+
+// 1. OBTENER DATOS DEL BACKEND
 async function fetchBundles() {
   try {
-    const response = await fetch("/api/get-bundles");
+    const response = await fetch(getBackendUrl("/api/get-bundles"));
+    if (!response.ok) {
+      throw new Error(`Error en el servidor: ${response.status}`);
+    }
     allBundles = await response.json();
     renderView();
   } catch (error) {
@@ -171,7 +182,7 @@ function toggleStatus(s3Path) {
   if (item) {
     item.status = item.status === "Preservado" ? "Descartado" : "Preservado";
 
-    fetch("/api/save-selection", {
+    fetch(getBackendUrl("/api/save-selection"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(allBundles),
@@ -209,7 +220,7 @@ async function handleAuthorize() {
   }
 
   try {
-    const response = await fetch("/api/authorize-cleanup", {
+    const response = await fetch(getBackendUrl("/api/authorize-cleanup"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(allBundles),

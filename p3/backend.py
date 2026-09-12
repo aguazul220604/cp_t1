@@ -1,7 +1,11 @@
 import io
 import json
 from datetime import datetime, timedelta
-from flask import request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file
+import dataiku
+
+# Requerido por Dataiku para vincular las rutas de Flask
+app = Flask(__name__)
 import pandas as pd
 import dataiku
 
