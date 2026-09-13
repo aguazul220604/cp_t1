@@ -3,88 +3,83 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gestión de Limpieza de Bundles de Dataiku en S3</title>
-    <!-- Estilos de Dataiku WebApp y personalizados -->
-    <link rel="stylesheet" href="./style.css" />
+    <title>Gestión y Automatización de Eliminación de Bundles Dataiku</title>
+    <!-- Hojas de estilo -->
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <!-- CONTENEDOR PRINCIPAL -->
-    <div class="app-container">
-      <!-- ENCABEZADO INSTITUCIONAL -->
-      <header class="app-header">
-        <div class="header-branding">
-          <div class="logo-container">
-            <span class="logo-icon"></span>
-          </div>
-          <div class="header-titles">
-            <span class="org-subtitle"
-              >Banamex | Cognitive Services and Machine Learning Core of
-              Excellence</span
-            >
-            <h1 class="main-title">
-              Gestión de Limpieza de Bundles de Dataiku en S3
-            </h1>
-          </div>
+    <!-- ==========================================
+         1. HEADER TRANSVERSAL
+         ========================================== -->
+    <header class="global-header">
+      <div class="brand-container">
+        <!-- Logo Icono -->
+        <svg class="brand-logo" viewBox="0 0 24 24" fill="#00A896">
+          <path
+            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"
+          />
+        </svg>
+        <div class="brand-titles">
+          <h1>Gestión y Automatización de Eliminación</h1>
+          <h2>Bundles Dataiku en S3</h2>
         </div>
+      </div>
 
-        <!-- Botón Global para cambiar de Flujo (NEW FLOW / LEGACY FLOW) -->
-        <div class="header-actions">
-          <button id="btn-select-flow" class="btn-primary-action">
-            Seleccionar flujo
-          </button>
-        </div>
-      </header>
+      <!-- Enrutador Principal de Flujos -->
+      <div class="flow-select-container">
+        <select id="select-flow-dropdown">
+          <option value="HOME" selected>Seleccionar flujo</option>
+          <option value="NEW">NEW FLOW</option>
+          <option value="LEGACY">LEGACY FLOW</option>
+        </select>
+      </div>
+    </header>
 
-      <!-- BARRA DE SUB-NAVEGACIÓN Y TÍTULO DE VISTA -->
-      <nav class="sub-header">
-        <div class="view-indicator">
-          <h2 id="view-title">
-            NEW FLOW | Versionamiento de Proyectos por Ambiente
-          </h2>
-        </div>
-        <div class="sub-header-actions">
-          <!-- Botón dinámico que se oculta o muestra dependiendo de la vista -->
-          <button id="btn-toggle-historic" class="btn-secondary-action">
-            Consultar histórico
-          </button>
-        </div>
-      </nav>
+    <!-- ==========================================
+         2. CONTENEDOR DINÁMICO DE VISTAS (JS RENDER)
+         ========================================== -->
+    <main id="main-content-container">
+      <!-- El contenido de las 6 vistas se renderiza dinámicamente desde app.js -->
+    </main>
 
-      <!-- CONTENEDOR DINÁMICO (JavaScript renderiza Vistas 1, 2, 3 o 4 aquí) -->
-      <main id="view-container" class="main-content">
-        <!-- Renderizado por app.js -->
-      </main>
+    <!-- ==========================================
+         3. DASHBOARD INFERIOR (FOOTER STICKY)
+         ========================================== -->
+    <footer class="footer-dashboard">
+      <!-- Indicadores y Métricas Dinámicas -->
+      <div class="metrics-summary">
+        <p>
+          Espacio total ocupado de versionamientos:
+          <strong id="stat-total">0.00 MB</strong>
+        </p>
+        <p>
+          Espacio por liberar de versionamientos:
+          <strong id="stat-liberar">0.00 MB</strong>
+        </p>
+        <p>
+          Espacio resultante considerado de versionamientos:
+          <strong id="stat-resultante">0.00 MB</strong>
+        </p>
+        <p id="stat-periodo">Periodo de ejecución: Sep 2026</p>
+        <p id="stat-criterio">Antigüedad de versionamientos: > 6 meses</p>
+      </div>
 
-      <!-- PIE DE PÁGINA FIXO: MÉTRICAS DE ALMACENAMIENTO Y AUTORIZACIÓN -->
-      <footer class="app-footer">
-        <div class="metrics-panel">
-          <div class="metric-item">
-            <span class="metric-label">Espacio total ocupado:</span>
-            <span id="stat-total" class="metric-value">0.00 GB</span>
-          </div>
-          <div class="metric-item">
-            <span class="metric-label">Espacio por liberar:</span>
-            <span id="stat-liberate" class="metric-value highlight-red"
-              >0.00 GB</span
-            >
-          </div>
-          <div class="metric-item">
-            <span class="metric-label">Espacio resultante considerado:</span>
-            <span id="stat-result" class="metric-value highlight-green"
-              >0.00 GB</span
-            >
-          </div>
-        </div>
+      <!-- Botones de Acción Globales -->
+      <div class="footer-actions">
+        <button
+          class="btn-action-global orange"
+          onclick="triggerGlobalReport()"
+        >
+          Consulta Global
+        </button>
+        <button class="btn-action-global yellow" onclick="triggerAuthorize()">
+          Autorizar
+        </button>
+      </div>
+    </footer>
 
-        <!-- Botón Principal de Ejecución y Descarga de CSV -->
-        <div class="action-panel">
-          <button id="btn-authorize" class="btn-authorize">Autorizar</button>
-        </div>
-      </footer>
-    </div>
-
-    <!-- Carga de librerías de Dataiku y Script de la WebApp -->
-    <script src="/static/dataiku/js/api/v1/dataiku.js"></script>
+    <!-- Dependencias y Lógica Backend / Frontend -->
+    <script src="/resource/dataiku.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

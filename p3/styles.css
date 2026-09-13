@@ -1,264 +1,293 @@
-/* ==========================================================================
-   1. VARIABLES DE ESTILO Y RESET GENERAL
-   ========================================================================== */
+/* ==========================================
+   1. VARIABLES GLOBALES Y RESET
+   ========================================== */
 :root {
-  --bg-primary: #003348; /* Azul oscuro institucional del fondo */
-  --bg-card: #002231; /* Azul más oscuro para los contenedores */
-  --bg-inner: #ffffff; /* Blanco de la caja interior de datos */
-  --text-primary: #ffffff; /* Texto blanco */
-  --text-dark: #1e293b; /* Texto oscuro sobre fondo blanco */
-  --text-muted: #64748b; /* Texto secundario */
-  --accent-yellow: #ffee00; /* Amarillo fosforescente para Autorizar */
-  --accent-red: #ef4444; /* Rojo para Descartado / Espacio a liberar */
-  --accent-green: #22c55e; /* Verde para Conservado / Espacio resultante */
-  --border-radius: 12px;
+  --bg-dark-teal: #063c4d;
+  --bg-card: #bde9fa;
+  --bg-card-header: #0a3342;
+  --text-light: #ffffff;
+  --text-dark: #1e293b;
+  --btn-green: #2ecc71;
+  --btn-red: #e74c3c;
+  --btn-orange: #ff5722;
+  --btn-yellow: #ffea00;
+  --border-radius-lg: 16px;
+  --border-radius-sm: 8px;
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 body {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
+  background-color: var(--bg-dark-teal);
+  color: var(--text-light);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
 }
 
-/* ==========================================================================
-   2. ESTRUCTURA Y CONTENEDORES
-   ========================================================================== */
-.app-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  padding: 20px 30px;
-}
-
-/* Encabezado Principal */
-.app-header {
+/* ==========================================
+   2. HEADER TRANSVERSAL
+   ========================================== */
+.global-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 15px;
+  padding: 15px 30px;
+  background-color: #032b38;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.header-branding {
+.brand-container {
   display: flex;
   align-items: center;
   gap: 15px;
 }
 
-.logo-icon {
+.brand-logo {
   width: 35px;
   height: 35px;
-  background-color: #e60000; /* Rojo Banamex */
-  display: inline-block;
-  border-radius: 50%;
 }
 
-.org-subtitle {
-  font-size: 0.85rem;
-  color: #94a3b8;
-  display: block;
-}
-
-.main-title {
-  font-size: 1.4rem;
-  font-weight: 700;
-}
-
-/* Sub-navegación */
-.sub-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 10px;
-  margin-bottom: 15px;
-}
-
-#view-title {
+.brand-titles h1 {
   font-size: 1.1rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+  font-weight: 400;
+  color: #a0aec0;
 }
 
-/* Área Principal Dinámica */
-.main-content {
+.brand-titles h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-light);
+}
+
+.flow-select-container select {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: none;
+  font-weight: bold;
+  color: var(--bg-dark-teal);
+  background-color: #ffffff;
+  cursor: pointer;
+}
+
+/* ==========================================
+   3. CONTENEDOR PRINCIPAL Y VISTAS
+   ========================================== */
+#main-content-container {
+  padding: 20px 40px;
   flex: 1;
-  background-color: var(--bg-card);
-  border-radius: var(--border-radius);
-  padding: 20px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
 
-/* ==========================================================================
-   3. BOTONES Y ACCIONES
-   ========================================================================== */
-.btn-primary-action,
-.btn-secondary-action {
-  background: #ffffff;
-  color: var(--bg-card);
+.view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.view-header h2 {
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.btn-subnav {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--bg-dark-teal);
   border: none;
   padding: 8px 18px;
   border-radius: 20px;
   font-weight: 600;
-  font-size: 0.85rem;
   cursor: pointer;
-  transition: all 0.2s ease;
 }
 
-.btn-primary-action:hover,
-.btn-secondary-action:hover {
-  background: #e2e8f0;
+/* Home Card */
+.home-card {
+  background-color: #ffffff;
+  border-radius: var(--border-radius-lg);
+  padding: 60px;
+  text-align: center;
+  color: var(--bg-dark-teal);
+  margin: auto;
+  width: 80%;
+  max-width: 800px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
 }
 
-.btn-authorize {
-  background-color: var(--accent-yellow);
-  color: #000;
-  border: none;
-  padding: 12px 40px;
-  border-radius: 25px;
-  font-size: 1.1rem;
-  font-weight: 800;
-  cursor: pointer;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-  transition:
-    transform 0.1s ease,
-    background-color 0.2s;
+.bird-icon-container {
+  margin-bottom: 20px;
 }
 
-.btn-authorize:hover {
-  background-color: #ebd800;
-  transform: scale(1.02);
-}
-
-/* Buttons de Toggle (Estatus en Filas) */
-.btn-toggle {
-  border: none;
-  background: none;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 6px;
-}
-
-.btn-toggle.preserved {
-  color: var(--accent-green);
-}
-
-.btn-toggle.discarded {
-  color: var(--accent-red);
-}
-
-/* ==========================================================================
-   4. DISTRIBUCIÓN DE VISTAS (DUAL Y TABLAS)
-   ========================================================================== */
-/* Vista 1: Columnas UAT y PROD-1 Lado a Lado */
-.dual-env-container {
+/* Grid Vistas New Flow */
+.cards-grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
-  height: 100%;
-}
-
-.env-column {
-  background-color: var(--bg-inner);
-  border-radius: var(--border-radius);
-  padding: 20px;
-  color: var(--text-dark);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-.env-column h3 {
-  text-align: center;
-  font-size: 1.3rem;
-  margin-bottom: 15px;
-  color: var(--bg-card);
-}
-
-/* Listado de Bundles */
-.bundle-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.bundle-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid #e2e8f0;
-  font-size: 0.9rem;
-}
-
-.col-project {
   flex: 1;
 }
 
-.col-filename {
-  flex: 2;
-  font-family: monospace;
-  color: #475569;
+.env-card {
+  background-color: var(--bg-card);
+  border-radius: var(--border-radius-lg);
+  padding: 20px;
+  color: var(--text-dark);
 }
 
-.col-size {
-  width: 80px;
-  text-align: right;
-  margin-right: 15px;
-  font-weight: 600;
-}
-
-/* Selector de ambiente en histórico */
-select {
-  padding: 8px 12px;
-  border-radius: 6px;
+.env-title {
+  text-align: center;
+  font-size: 1.3rem;
   margin-bottom: 15px;
-  font-size: 0.9rem;
+  color: var(--bg-dark-teal);
 }
 
-/* ==========================================================================
-   5. PIE DE PÁGINA FIXO Y MÉTRICAS
-   ========================================================================== */
-.app-footer {
+.project-box {
+  background-color: #ffffff;
+  border-radius: var(--border-radius-sm);
+  padding: 12px;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.server-tag {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #64748b;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.version-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 15px;
-  margin-top: 10px;
+  margin-bottom: 8px;
 }
 
-.metrics-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.95rem;
+.version-name {
+  font-family: monospace;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 
-.metric-label {
-  color: #cbd5e1;
+/* ==========================================
+   4. TABLAS
+   ========================================== */
+.table-container {
+  background-color: var(--bg-card);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
 }
 
-.highlight-red {
-  color: #f87171;
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text-dark);
 }
 
-.highlight-green {
-  color: #4ade80;
+.data-table th {
+  background-color: var(--bg-card-header);
+  color: var(--text-light);
+  padding: 14px 20px;
+  text-align: left;
+  font-size: 1.1rem;
+}
+
+.data-table td {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  font-family: monospace;
+  font-size: 0.95rem;
+}
+
+/* Togglers Conservado/Descartado */
+.status-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 0.85rem;
+}
+
+.status-toggle-btn .icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.status-toggle-btn.conservado .icon {
+  background-color: var(--btn-green);
+}
+.status-toggle-btn.conservado span:last-child {
+  color: #1e293b;
+}
+
+.status-toggle-btn.descartado .icon {
+  background-color: var(--btn-red);
+}
+.status-toggle-btn.descartado span:last-child {
+  color: #1e293b;
+}
+
+/* ==========================================
+   5. DASHBOARD INFERIOR (FOOTER STICKY)
+   ========================================== */
+.footer-dashboard {
+  background-color: #032b38;
+  padding: 20px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.metrics-summary p {
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.metrics-summary strong {
+  font-weight: bold;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 15px;
+}
+
+.btn-action-global {
+  border: none;
+  padding: 12px 28px;
+  border-radius: 25px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-action-global:hover {
+  opacity: 0.9;
+}
+
+.btn-action-global.orange {
+  background-color: var(--btn-orange);
+  color: #ffffff;
+}
+
+.btn-action-global.yellow {
+  background-color: var(--btn-yellow);
+  color: #000000;
 }
