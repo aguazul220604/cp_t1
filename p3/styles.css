@@ -1,5 +1,5 @@
 /* ==========================================
-   1. VARIABLES GLOBALES Y RESET
+   VARIABLES GLOBALES 
    ========================================== */
 :root {
   --bg-dark-teal: #063c4d;
@@ -32,7 +32,7 @@ body {
 }
 
 /* ==========================================
-   2. HEADER TRANSVERSAL
+   HEADER
    ========================================== */
 .global-header {
   display: flex;
@@ -77,7 +77,7 @@ body {
 }
 
 /* ==========================================
-   3. CONTENEDOR PRINCIPAL Y VISTAS
+   CONTENEDOR PRINCIPAL 
    ========================================== */
 #main-content-container {
   padding: 20px 40px;
@@ -99,13 +99,21 @@ body {
 }
 
 .btn-subnav {
-  background: rgba(255, 255, 255, 0.9);
+  background: #ffffff;
   color: var(--bg-dark-teal);
   border: none;
   padding: 8px 18px;
   border-radius: 20px;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 0.9rem;
   cursor: pointer;
+  height: 35px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.2s;
+}
+
+.btn-subnav:hover {
+  background-color: #f8fafc;
 }
 
 /* Home Card */
@@ -177,7 +185,7 @@ body {
 }
 
 /* ==========================================
-   4. TABLAS
+   TABLAS
    ========================================== */
 .table-container {
   background-color: var(--bg-card);
@@ -243,7 +251,7 @@ body {
 }
 
 /* ==========================================
-   5. DASHBOARD INFERIOR (FOOTER STICKY)
+   DASHBOARD INFERIOR
    ========================================== */
 .footer-dashboard {
   background-color: #032b38;
@@ -290,4 +298,29 @@ body {
 .btn-action-global.yellow {
   background-color: var(--btn-yellow);
   color: #000000;
+}
+
+.dropdown-select {
+  padding: 8px 18px;
+  border-radius: 20px;
+  border: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--bg-dark-teal);
+  background-color: #ffffff;
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  display: inline-block;
+  height: 35px;
+}
+
+.dropdown-select:hover {
+  background-color: #f8fafc;
+}
+
+.controls-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
