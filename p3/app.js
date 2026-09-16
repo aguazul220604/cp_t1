@@ -192,9 +192,15 @@ function renderNewFlowCleanup(bundles) {
 }
 
 function renderNewFlowHistoric(bundles, selectedEnv) {
-  const items = bundles.filter(
-    (b) => b.flow === "NEW" && b.env === selectedEnv,
-  );
+  // Normalizamos a mayúsculas y eliminamos espacios para evitar inconsistencias
+  const targetEnv = (selectedEnv || "").trim().toUpperCase();
+
+  const items = bundles.filter((b) => {
+    const bundleFlow = (b.flow || "").trim().toUpperCase();
+    const bundleEnv = (b.env || "").trim().toUpperCase();
+
+    return bundleFlow === "NEW" && bundleEnv === targetEnv;
+  });
 
   return `
         <div class="view-header">
@@ -202,8 +208,8 @@ function renderNewFlowHistoric(bundles, selectedEnv) {
             <div class="controls-group">
                 <button class="btn-subnav" onclick="AppState.switchSection('CLEANUP')">Consultar versionamiento</button>
                 <select class="dropdown-select" onchange="AppState.currentEnv=this.value; AppState.renderCurrentView();">
-                    <option value="UAT" ${selectedEnv === "UAT" ? "selected" : ""}>UAT</option>
-                    <option value="PROD-1" ${selectedEnv === "PROD-1" ? "selected" : ""}>PROD-1</option>
+                    <option value="UAT" ${targetEnv === "UAT" ? "selected" : ""}>UAT</option>
+                    <option value="PROD-1" ${targetEnv === "PROD-1" ? "selected" : ""}>PROD-1</option>
                 </select>
             </div>
         </div>
@@ -223,13 +229,13 @@ function renderNewFlowHistoric(bundles, selectedEnv) {
                       .map(
                         (b) => `
                         <tr>
-                            <td>${b.nickname}</td>
+                            <td>${b.nickname || "N/A"}</td>
                             <td>${b.proyecto}</td>
-                            <td>${b.filename}</td>
+                            <td>${b.filename || b.s3_path}</td>
                             <td>
-                                <button class="status-toggle-btn ${b.estado.toLowerCase()}" onclick="AppState.toggleStatus('${b.s3_path}')">
-                                    <span class="icon">${b.estado === "Conservado" ? "✔" : "✖"}</span>
-                                    <span>${b.estado}</span>
+                                <button class="status-toggle-btn ${(b.estado || "Conservado").toLowerCase()}" onclick="AppState.toggleStatus('${b.s3_path}')">
+                                    <span class="icon">${b.estado === "Descartado" ? "✖" : "✔"}</span>
+                                    <span>${b.estado || "Conservado"}</span>
                                 </button>
                             </td>
                         </tr>
