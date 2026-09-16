@@ -200,41 +200,30 @@ def save_historical_records(records):
 @app.route("/scan-bundles", methods=["GET"])
 def api_scan_bundles():
     """
-    Obtiene los bundles de S3 (> 6 meses) y los cruza con 'historical'
-    para asignar estados iniciales:
-    - Versión más reciente del proyecto -> Conservado
-    - Versiones anteriores -> Descartado
-    - Registrados en 'historical' -> Conservado
+    Obtiene únicamente los registros guardados en 'historical'
+    y reconstruye la información necesaria para el frontend desde 's3_path'.
     """
-    s3_bundles = fetch_s3_bundles()
     historical = get_historical_records()
-    historical_paths = {h["s3_path"] for h in historical}
-    
-    # Agrupar por proyecto para identificar la versión más reciente
-    projects_map = {}
-    for b in s3_bundles:
-        proj = b["proyecto"]
-        if proj not in projects_map:
-            projects_map[proj] = []
-        projects_map[proj].append(b)
-        
     final_bundles = []
     
-    for proj, items in projects_map.items():
-        # Ordenar versiones por fecha descendente
-        items.sort(key=lambda x: x["fecha_creacion"], reverse=True)
+    for row in historical:
+        path = row.get("s3_path", "")
+        # Extraer env, nickname y filename a partir de la ruta guardada
+        meta = parse_s3_path(path) if path else None
         
-        for idx, item in enumerate(items):
-            # Regla de preselección por defecto:
-            # 1. Si está previamente en 'historical' -> Conservado
-            # 2. Si es la versión más reciente (idx == 0) -> Conservado
-            # 3. En otro caso -> Descartado
-            if item["s3_path"] in historical_paths or idx == 0:
-                item["estado"] = "Conservado"
-            else:
-                item["estado"] = "Descartado"
-                
-            final_bundles.append(item)
+        final_bundles.append({
+            "id": str(row.get("id", "")),
+            "s3_path": path,
+            "flow": row.get("flow", meta["flow"] if meta else "NEW"),
+            "env": meta["env"] if meta else "",
+            "nickname": meta["nickname"] if meta else "",
+            "proyecto": row.get("proyecto", ""),
+            "filename": meta["filename"] if meta else "",
+            "fecha_creacion": str(row.get("fecha_creacion_s3", "")),
+            "fecha_periodo_limpieza": str(row.get("fecha_periodo_limpieza", "")),
+            "size_mb": row.get("size_mb", 0),
+            "estado": "Conservado"
+        })
             
     return jsonify({
         "status": "success",
