@@ -41,6 +41,63 @@ def parse_s3_path(path):
     parts = clean_path.split("/")
     
     # -------------------------------------------------------------
+    # ESTRUCTURA NEW FLOW: dataiku/{ENV}/{NICKNAME}/{PROJECT_KEY}/{ZIP_NAME}
+    # Ejemplo: dataiku/UAT/DKUD/AE93384SANDBOX/2026-08-20_153638.zip
+    # -------------------------------------------------------------
+    if len(parts) >= 5 and parts[0] == "dataiku":
+        env = parts[1]        # "UAT" o "PROD-1"
+        nickname = parts[2]   # "DKUD", "DKUF", etc.
+        project = parts[3]    # "AE93384SANDBOX", etc.
+        filename = parts[4]   # "2026-08-20_153638.zip"
+        
+        return {
+            "flow": "NEW",
+            "env": env,              
+            "nickname": nickname,    
+            "proyecto": project,     
+            "filename": filename    
+        }
+    
+    # -------------------------------------------------------------
+    # ESTRUCTURA LEGACY FLOW: Todo lo opuesto a la estructura de arriba
+    # Ejemplo: {PROJECT_KEY}/project_bundles/{ZIP_NAME} o cualquier otra estructura Legacy
+    # -------------------------------------------------------------
+    elif len(parts) >= 3 and parts[1] == "project_bundles":
+        project = parts[0]
+        filename = "/".join(parts[2:])
+        
+        return {
+            "flow": "LEGACY",
+            "env": "PROD",        
+            "nickname": "LEGACY",   
+            "proyecto": project,
+            "filename": filename
+        }
+    
+    # Manejo de cualquier otra estructura de respaldos Legacy
+    elif len(parts) >= 2 and parts[0] != "dataiku":
+        project = parts[0]
+        filename = "/".join(parts[1:])
+        
+        return {
+            "flow": "LEGACY",
+            "env": "PROD",
+            "nickname": "LEGACY",
+            "proyecto": project,
+            "filename": filename
+        }
+    
+    # Ruta no reconocida 
+    return None
+
+    """
+    Parsear rutas de S3 y devolver diccionario con un esquema homogéneo.
+    Campos estandarizados: flow, env, nickname, proyecto, filename
+    """
+    clean_path = path.lstrip("/")
+    parts = clean_path.split("/")
+    
+    # -------------------------------------------------------------
     # ESTRUCTURA NEW FLOW: dataiku/{SERVER_ID}/{PROJECT_KEY}/{ZIP_NAME}
     # -------------------------------------------------------------
     if len(parts) >= 4 and parts[0] == "dataiku":
