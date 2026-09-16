@@ -90,18 +90,24 @@ window.AppState = {
   },
 
   getMetrics() {
-    const currentList = this.activeBundles;
-    const totalMB = currentList.reduce((acc, b) => acc + (b.size_mb || 0), 0);
+    const currentList = this.activeBundles || [];
+
+    // Aseguramos que la conversión a número sea estricta usando parseFloat
+    const totalMB = currentList.reduce(
+      (acc, b) => acc + (parseFloat(b.size_mb) || 0),
+      0,
+    );
+
     const espacioALiberar = currentList
       .filter((b) => b.estado === "Descartado")
-      .reduce((acc, b) => acc + (b.size_mb || 0), 0);
+      .reduce((acc, b) => acc + (parseFloat(b.size_mb) || 0), 0);
 
     const espacioResultante = Math.max(0, totalMB - espacioALiberar);
 
     return {
-      total: totalMB.toFixed(2),
-      aLiberar: espacioALiberar.toFixed(2),
-      resultante: espacioResultante.toFixed(2),
+      total: Number(totalMB).toFixed(2),
+      aLiberar: Number(espacioALiberar).toFixed(2),
+      resultante: Number(espacioResultante).toFixed(2),
     };
   },
 
