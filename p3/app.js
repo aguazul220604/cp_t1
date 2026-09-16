@@ -106,23 +106,45 @@ window.AppState = {
 
   // CAMBIO DE ESTATUS SINCRONIZADO
   toggleStatus(s3_path) {
-    // 1. Actualizar en el estado principal (scanBundles)
-    const scanItem = this.scanBundles.find((b) => b.s3_path === s3_path);
-    if (scanItem) {
-      scanItem.estado =
-        scanItem.estado === "Conservado" ? "Descartado" : "Conservado";
-    }
+    if (!s3_path) return;
 
-    // 2. Si el registro también se muestra en la vista de Histórico, actualizar su vista
-    const historicItem = this.historicBundles.find(
-      (b) => b.s3_path === s3_path,
+    // Función auxiliar para limpiar y estandarizar rutas S3
+    const normalizePath = (path) =>
+      (path || "").trim().toLowerCase().replace(/\/+$/, "");
+
+    const targetPath = normalizePath(s3_path);
+
+    // 1. Buscar en el listado activo de S3 (scanBundles)
+    let scanItem = this.scanBundles.find(
+      (b) => normalizePath(b.s3_path) === targetPath,
     );
-    if (historicItem) {
-      historicItem.estado =
-        historicItem.estado === "Conservado" ? "Descartado" : "Conservado";
+
+    // 2. Buscar en el listado de Histórico
+    let historicItem = this.historicBundles.find(
+      (b) => normalizePath(b.s3_path) === targetPath,
+    );
+
+    // Determinar el nuevo estado
+    const currentStatus = (scanItem || historicItem)?.estado || "Conservado";
+    const newStatus =
+      currentStatus === "Conservado" ? "Descartado" : "Conservado";
+
+    // 3. Si existe en scanBundles, actualizarlo
+    if (scanItem) {
+      scanItem.estado = newStatus;
+    }
+    // Si no existía en scanBundles pero sí en historicBundles, sincronizarlo al listado global
+    else if (historicItem) {
+      scanItem = { ...historicItem, estado: newStatus };
+      this.scanBundles.push(scanItem);
     }
 
-    // 3. Recalcular las métricas globales de S3 y refrescar la pantalla
+    // 4. Actualizar el estado en el listado de la vista Histórico
+    if (historicItem) {
+      historicItem.estado = newStatus;
+    }
+
+    // 5. Recalcular métricas globales y refrescar la interfaz
     this.renderMetrics();
     this.renderCurrentView();
   },
