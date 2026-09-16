@@ -15,7 +15,7 @@ S3_FOLDER_ID = "S3_Bundle_Backup_Path"
 HISTORICAL_DATASET_NAME = "historical"
 SIX_MONTHS_AGO = datetime.now() - timedelta(days=180)
 
-# Mapeo de servidores para New Flow (por si las rutas traen server_id)
+# Mapeo de servidores para New Flow
 NEW_FLOW_SERVERS = {
     'sd-7u15-eilw': ('PROD-1', 'DKUF'),
     'sd-mn7t-ccgf': ('PROD-1', 'RISP'),
@@ -28,86 +28,92 @@ NEW_FLOW_SERVERS = {
 }
 
 # ==========================================
-# FUNCIONES HELPER 
+# FUNCIONES HELPER
 # ==========================================
 def parse_s3_path(path):
     """
-    Parsear rutas de S3 soporta ambos formatos:
-    1. dataiku/{ENV}/{NICKNAME}/{PROJECT_KEY}/{ZIP_NAME}
-    2. dataiku/{SERVER_ID}/{PROJECT_KEY}/{ZIP_NAME}
+    Parsear rutas de S3 y devolver diccionario con un esquema homogéneo.
+    Campos estandarizados: flow, env, nickname, proyecto, filename
     """
     clean_path = path.lstrip("/")
     parts = clean_path.split("/")
-    
+
     # -------------------------------------------------------------
-    # ESTRUCTURA NEW FLOW
+    # ESTRUCTURA NEW FLOW: dataiku/{ENV}/{NICKNAME}/{PROJECT_KEY}/{ZIP_NAME}
+    # Ejemplo: dataiku/UAT/DKUD/AE93384SANDBOX/2026-08-20_153638.zip
     # -------------------------------------------------------------
-    if len(parts) >= 4 and parts[0] == "dataiku":
-        # Caso 1: dataiku/UAT/DKUD/PROJECT/file.zip (5 partes)
-        if len(parts) >= 5:
-            env = parts[1]
-            nickname = parts[2]
-            project = parts[3]
-            filename = parts[4]
-        # Caso 2: dataiku/sd-7u15-eilw/PROJECT/file.zip (4 partes)
-        else:
-            server_id = parts[1]
-            project = parts[2]
-            filename = parts[3]
-            env, nickname = NEW_FLOW_SERVERS.get(server_id, ("DESCONOCIDO", server_id))
-        
+    if len(parts) >= 5 and parts[0] == "dataiku":
+        env = parts[1]        # "UAT" o "PROD-1"
+        nickname = parts[2]   # "DKUD", "DKUF", etc.
+        project = parts[3]    # "AE93384SANDBOX", etc.
+        filename = parts[4]   # "2026-08-20_153638.zip"
+
         return {
             "flow": "NEW",
-            "env": env,               
-            "nickname": nickname,     
-            "proyecto": project,     
-            "filename": filename    
+            "env": env,
+            "nickname": nickname,
+            "proyecto": project,
+            "filename": filename
         }
-    
+
     # -------------------------------------------------------------
-    # ESTRUCTURA LEGACY FLOW
+    # ESTRUCTURA LEGACY FLOW: Todo lo opuesto a la estructura de arriba
+    # Ejemplo: {PROJECT_KEY}/project_bundles/{ZIP_NAME} o cualquier otra estructura Legacy
     # -------------------------------------------------------------
     elif len(parts) >= 3 and parts[1] == "project_bundles":
-        return {
-            "flow": "LEGACY",
-            "env": "PROD",        
-            "nickname": "LEGACY",   
-            "proyecto": parts[0],
-            "filename": "/".join(parts[2:])
-        }
-    elif len(parts) >= 2 and parts[0] != "dataiku":
+        project = parts[0]
+        filename = "/".join(parts[2:])
+
         return {
             "flow": "LEGACY",
             "env": "PROD",
             "nickname": "LEGACY",
-            "proyecto": parts[0],
-            "filename": "/".join(parts[1:])
+            "proyecto": project,
+            "filename": filename
         }
-    
+
+    # Manejo de cualquier otra estructura de respaldos Legacy
+    elif len(parts) >= 2 and parts[0] != "dataiku":
+        project = parts[0]
+        filename = "/".join(parts[1:])
+
+        return {
+            "flow": "LEGACY",
+            "env": "PROD",
+            "nickname": "LEGACY",
+            "proyecto": project,
+            "filename": filename
+        }
+
+    # Ruta no reconocida
     return None
 
+
 def fetch_s3_bundles():
+    # Escanea el Folder administrado en S3, aplicar el parser estandarizado y filtrar únicamente los bundles > 6 meses
     folder = dataiku.Folder(S3_FOLDER_ID)
     paths = folder.list_paths_in_partition()
     bundles = []
-    
+
     for path in paths:
         if not path.endswith(".zip"):
             continue
-            
+
         meta = parse_s3_path(path)
         if not meta:
             continue
-            
+
         details = folder.get_path_details(path)
         last_modified_ms = details.get("lastModified", 0)
         file_size_bytes = details.get("size", 0)
-        
+
         creation_date = datetime.fromtimestamp(last_modified_ms / 1000.0)
-        
+
+        # Filtro por regla de 6 meses
         if creation_date < SIX_MONTHS_AGO:
             size_mb = round(file_size_bytes / (1024 * 1024), 2)
-            
+
+            # Formato estandarizado de salida
             bundles.append({
                 "id": str(hash(path)),
                 "s3_path": path,
@@ -119,77 +125,91 @@ def fetch_s3_bundles():
                 "fecha_creacion": creation_date.strftime("%Y-%m-%d %H:%M:%S"),
                 "size_mb": size_mb
             })
-            
+
     return bundles
 
 # ==========================================
 # GESTIÓN DEL HISTORICAL
 # ==========================================
 def get_historical_records():
+    # Leer el dataset administrado 'historical' y retorna un DataFrame
     try:
         dataset = dataiku.Dataset(HISTORICAL_DATASET_NAME)
         df = dataset.get_dataframe()
         return df.to_dict(orient="records")
     except Exception as e:
+        # Retornar lista vacía si el dataset aún no se ha inicializado
         return []
 
 def save_historical_records(records):
+    # Guardar o actualizar la lista de bundles preservados
     dataset = dataiku.Dataset(HISTORICAL_DATASET_NAME)
     df = pd.DataFrame(records)
     dataset.write_with_schema(df)
 
 # ==========================================
-# ENDPOINTS API REST 
+# ENDPOINTS API REST
 # ==========================================
 
 @app.route("/scan-bundles", methods=["GET"])
 def api_scan_bundles():
+    """
+    Escanea S3 activo (> 6 meses o periodo configurado) y cruza con 'historical'
+    para predeterminar qué versiones se conservan y cuáles se descartan.
+    """
     s3_bundles = fetch_s3_bundles()
     historical = get_historical_records()
     historical_paths = {h["s3_path"] for h in historical if "s3_path" in h}
-    
-    # CORRECCIÓN DE AGRUPACIÓN:
-    # Agrupar por (PROYECTO, AMBIENTE, FLOW) para tratar UAT y PROD-1 de forma independiente
-    groups = {}
+
+    # Agrupar por (nickname, proyecto) para identificar la versión más reciente
+    # dentro de cada servidor/ambiente. Agrupar solo por "proyecto" es incorrecto:
+    # el mismo project_key puede existir en varios ambientes/servidores (p. ej.
+    # UAT y PROD-1), y comparar sus fechas entre sí hace que el ambiente con
+    # bundles más antiguos quede siempre marcado como "Descartado" por completo.
+    projects_map = {}
     for b in s3_bundles:
-        group_key = (b["proyecto"], b["env"], b["flow"])
-        if group_key not in groups:
-            groups[group_key] = []
-        groups[group_key].append(b)
-        
+        key = (b["nickname"], b["proyecto"])
+        if key not in projects_map:
+            projects_map[key] = []
+        projects_map[key].append(b)
+
     final_bundles = []
-    
-    for group_key, items in groups.items():
-        # Ordenar por fecha de creación descendente (el más reciente primero)
+
+    for key, items in projects_map.items():
+        # Ordenar por fecha de creación descendente
         items.sort(key=lambda x: x["fecha_creacion"], reverse=True)
-        
+
         for idx, item in enumerate(items):
-            # 1. Si ya se guardó en 'historical' -> Conservado
-            # 2. Si es la versión más reciente dentro de SU ambiente -> Conservado
+            # 1. Si ya existe en 'historical' -> Conservado
+            # 2. Si es la versión más reciente dentro de su (nickname, proyecto) -> Conservado
             # 3. En otro caso -> Descartado
             if item["s3_path"] in historical_paths or idx == 0:
                 item["estado"] = "Conservado"
             else:
                 item["estado"] = "Descartado"
-                
+
             final_bundles.append(item)
-            
+
     return jsonify({
         "status": "success",
         "bundles": final_bundles,
         "periodo_ejecucion": datetime.now().strftime("%b %Y"),
         "criterio_antiguedad": "> 6 meses"
     })
-    
+
 @app.route("/get-historical", methods=["GET"])
 def api_get_historical():
+    """
+    Obtiene exclusivamente las filas guardadas en el dataset 'historical'.
+    Reconstruye env, nickname y filename a partir de s3_path con parse_s3_path.
+    """
     historical = get_historical_records()
     final_bundles = []
-    
+
     for row in historical:
         path = row.get("s3_path", "")
         meta = parse_s3_path(path) if path else None
-        
+
         final_bundles.append({
             "id": str(row.get("id", "")),
             "s3_path": path,
@@ -203,24 +223,29 @@ def api_get_historical():
             "size_mb": row.get("size_mb", 0),
             "estado": "Conservado"
         })
-            
+
     return jsonify({
         "status": "success",
         "bundles": final_bundles,
         "periodo_ejecucion": datetime.now().strftime("%b %Y")
     })
-    
+
 @app.route("/authorize-cleanup", methods=["POST"])
 def api_authorize_cleanup():
+    """
+    Ejecutar la purga física en S3 de los marcados como 'Descartado',
+    actualizar el dataset 'historical' con los 'Conservado' y generar
+    el reporte CSV de cambios del período actual.
+    """
     data = request.get_json()
     items = data.get("bundles", [])
-    
+
     folder = dataiku.Folder(S3_FOLDER_ID)
     current_period = datetime.now().strftime("%Y-%m-%d")
-    
+
     to_delete = [b for b in items if b.get("estado") == "Descartado"]
     to_preserve = [b for b in items if b.get("estado") == "Conservado"]
-    
+
     # Borrado en S3
     deleted_log = []
     for b in to_delete:
@@ -231,7 +256,7 @@ def api_authorize_cleanup():
         except Exception as e:
             b["action"] = f"ERROR: {str(e)}"
             deleted_log.append(b)
-            
+
     # Actualizar dataset 'historical'
     historical_records = []
     for b in to_preserve:
@@ -245,12 +270,12 @@ def api_authorize_cleanup():
             "size_mb": b["size_mb"]
         })
     save_historical_records(historical_records)
-    
+
     # Generar CSV del periodo actual
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["id", "s3_path", "flow", "proyecto", "fecha_creacion", "estado", "size_mb", "fecha_periodo"])
     writer.writeheader()
-    
+
     for b in items:
         writer.writerow({
             "id": b["id"],
@@ -262,7 +287,7 @@ def api_authorize_cleanup():
             "size_mb": b["size_mb"],
             "fecha_periodo": current_period
         })
-        
+
     output.seek(0)
     return send_file(
         io.BytesIO(output.getvalue().encode("utf-8")),
@@ -273,14 +298,15 @@ def api_authorize_cleanup():
 
 @app.route("/global-report", methods=["GET"])
 def api_global_report():
+    # Generar y descargar reporte CSV global del repositorio S3 y sus estados
     s3_bundles = fetch_s3_bundles()
     historical = get_historical_records()
     historical_paths = {h["s3_path"] for h in historical}
-    
+
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["id", "s3_path", "flow", "env", "proyecto", "fecha_creacion", "estado", "size_mb"])
     writer.writeheader()
-    
+
     for b in s3_bundles:
         estado = "Preservado" if b["s3_path"] in historical_paths else "Descartado"
         writer.writerow({
@@ -293,7 +319,7 @@ def api_global_report():
             "estado": estado,
             "size_mb": b["size_mb"]
         })
-        
+
     output.seek(0)
     return send_file(
         io.BytesIO(output.getvalue().encode("utf-8")),
