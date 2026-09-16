@@ -8,8 +8,6 @@ import dataiku
 from dataiku import pandasutils as pdu
 import pandas as pd
 
-app = Flask(__name__)
-
 # ==========================================
 # CONFIGURACIÓN Y CONSTANTES
 # ==========================================
@@ -200,15 +198,56 @@ def save_historical_records(records):
 @app.route("/scan-bundles", methods=["GET"])
 def api_scan_bundles():
     """
-    Obtiene únicamente los registros guardados en 'historical'
-    y reconstruye la información necesaria para el frontend desde 's3_path'.
+    Escanea S3 activo (> 6 meses o periodo configurado) y cruza con 'historical'
+    para predeterminar qué versiones se conservan y cuáles se descartan.
+    """
+    s3_bundles = fetch_s3_bundles()
+    historical = get_historical_records()
+    historical_paths = {h["s3_path"] for h in historical if "s3_path" in h}
+    
+    # Agrupar por proyecto para identificar la versión más reciente
+    projects_map = {}
+    for b in s3_bundles:
+        proj = b["proyecto"]
+        if proj not in projects_map:
+            projects_map[proj] = []
+        projects_map[proj].append(b)
+        
+    final_bundles = []
+    
+    for proj, items in projects_map.items():
+        # Ordenar por fecha de creación descendente
+        items.sort(key=lambda x: x["fecha_creacion"], reverse=True)
+        
+        for idx, item in enumerate(items):
+            # 1. Si ya existe en 'historical' -> Conservado
+            # 2. Si es la versión más reciente (idx == 0) -> Conservado
+            # 3. En otro caso -> Descartado
+            if item["s3_path"] in historical_paths or idx == 0:
+                item["estado"] = "Conservado"
+            else:
+                item["estado"] = "Descartado"
+                
+            final_bundles.append(item)
+            
+    return jsonify({
+        "status": "success",
+        "bundles": final_bundles,
+        "periodo_ejecucion": datetime.now().strftime("%b %Y"),
+        "criterio_antiguedad": "> 6 meses"
+    })
+    
+@app.route("/get-historical", methods=["GET"])
+def api_get_historical():
+    """
+    Obtiene exclusivamente las filas guardadas en el dataset 'historical'.
+    Reconstruye env, nickname y filename a partir de s3_path con parse_s3_path.
     """
     historical = get_historical_records()
     final_bundles = []
     
     for row in historical:
         path = row.get("s3_path", "")
-        # Extraer env, nickname y filename a partir de la ruta guardada
         meta = parse_s3_path(path) if path else None
         
         final_bundles.append({
@@ -228,10 +267,9 @@ def api_scan_bundles():
     return jsonify({
         "status": "success",
         "bundles": final_bundles,
-        "periodo_ejecucion": datetime.now().strftime("%b %Y"),
-        "criterio_antiguedad": "> 6 meses"
+        "periodo_ejecucion": datetime.now().strftime("%b %Y")
     })
-
+    
 @app.route("/authorize-cleanup", methods=["POST"])
 def api_authorize_cleanup():
     """

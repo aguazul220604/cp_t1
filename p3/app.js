@@ -5,14 +5,25 @@ window.AppState = {
   periodoEjecucion: "Sep 2026",
   criterioAntiguedad: "> 6 meses",
   espacioTotalMB: 0,
-  bundles: [],
+
+  // Separación de estados para evitar cruce de datos
+  scanBundles: [], // Provenientes de /scan-bundles (S3 activo)
+  historicBundles: [], // Provenientes de /get-historical (Tabla historical)
 
   currentFlow: "NEW",
-  currentSection: "CLEANUP",
+  currentSection: "CLEANUP", // "CLEANUP" o "HISTORIC"
   currentEnv: "UAT",
 
+  isLoading: false,
+
   async init() {
-    // Renderizado inicial
+    this.renderCurrentView();
+    await this.fetchScanBundles();
+  },
+
+  // Obtener versionamiento activo desde S3
+  async fetchScanBundles() {
+    this.isLoading = true;
     this.renderCurrentView();
 
     try {
@@ -21,43 +32,81 @@ window.AppState = {
       const data = await response.json();
 
       if (data.status === "success") {
-        this.bundles = data.bundles || [];
+        this.scanBundles = data.bundles || [];
         this.periodoEjecucion = data.periodo_ejecucion || this.periodoEjecucion;
-        this.espacioTotalMB = this.bundles.reduce(
-          (acc, b) => acc + (b.size_mb || 0),
-          0,
-        );
-
-        // Actualizar UI con datos reales
-        this.renderMetrics();
-        this.renderCurrentView();
+        this.criterioAntiguedad =
+          data.criterio_antiguedad || this.criterioAntiguedad;
       }
     } catch (error) {
-      console.error("Error al conectar con el backend:", error);
-      // Re-renderizar para mantener la estructura UI
+      console.error("Error al obtener /scan-bundles:", error);
+    } finally {
+      this.isLoading = false;
+      this.renderMetrics();
       this.renderCurrentView();
     }
   },
 
+  // Obtener registros preservados desde el dataset 'historical'
+  async fetchHistoricBundles() {
+    this.isLoading = true;
+    this.renderCurrentView();
+
+    try {
+      const url = getWebAppBackendUrl("/get-historical");
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.status === "success") {
+        this.historicBundles = data.bundles || [];
+      }
+    } catch (error) {
+      console.error("Error al obtener /get-historical:", error);
+    } finally {
+      this.isLoading = false;
+      this.renderMetrics();
+      this.renderCurrentView();
+    }
+  },
+
+  // Cambiar de sección y cargar el endpoint correspondiente si es necesario
+  async switchSection(section) {
+    this.currentSection = section;
+
+    if (section === "HISTORIC" && this.historicBundles.length === 0) {
+      await this.fetchHistoricBundles();
+    } else if (section === "CLEANUP" && this.scanBundles.length === 0) {
+      await this.fetchScanBundles();
+    } else {
+      this.renderMetrics();
+      this.renderCurrentView();
+    }
+  },
+
+  // Retorna los bundles correspondientes a la sección actual
+  get activeBundles() {
+    return this.currentSection === "CLEANUP"
+      ? this.scanBundles
+      : this.historicBundles;
+  },
+
   getMetrics() {
-    const espacioALiberar = this.bundles
+    const currentList = this.activeBundles;
+    const totalMB = currentList.reduce((acc, b) => acc + (b.size_mb || 0), 0);
+    const espacioALiberar = currentList
       .filter((b) => b.estado === "Descartado")
       .reduce((acc, b) => acc + (b.size_mb || 0), 0);
 
-    const espacioResultante = Math.max(
-      0,
-      this.espacioTotalMB - espacioALiberar,
-    );
+    const espacioResultante = Math.max(0, totalMB - espacioALiberar);
 
     return {
-      total: this.espacioTotalMB.toFixed(2),
+      total: totalMB.toFixed(2),
       aLiberar: espacioALiberar.toFixed(2),
       resultante: espacioResultante.toFixed(2),
     };
   },
 
   toggleStatus(s3_path) {
-    const item = this.bundles.find((b) => b.s3_path === s3_path);
+    const item = this.activeBundles.find((b) => b.s3_path === s3_path);
     if (item) {
       item.estado = item.estado === "Conservado" ? "Descartado" : "Conservado";
       this.renderMetrics();
@@ -91,23 +140,27 @@ window.AppState.renderCurrentView = function () {
   const mainContainer = document.getElementById("main-content-container");
   if (!mainContainer) return;
 
+  if (this.isLoading) {
+    mainContainer.innerHTML = `<div style="text-align:center; padding: 40px; color: #64748b;">Cargando información...</div>`;
+    return;
+  }
+
+  const bundles = this.activeBundles;
+
   if (this.currentFlow === "NEW" && this.currentSection === "CLEANUP") {
-    mainContainer.innerHTML = renderNewFlowCleanup(this.bundles);
+    mainContainer.innerHTML = renderNewFlowCleanup(bundles);
   } else if (this.currentFlow === "NEW" && this.currentSection === "HISTORIC") {
-    mainContainer.innerHTML = renderNewFlowHistoric(
-      this.bundles,
-      this.currentEnv,
-    );
+    mainContainer.innerHTML = renderNewFlowHistoric(bundles, this.currentEnv);
   } else if (
     this.currentFlow === "LEGACY" &&
     this.currentSection === "CLEANUP"
   ) {
-    mainContainer.innerHTML = renderLegacyCleanup(this.bundles);
+    mainContainer.innerHTML = renderLegacyCleanup(bundles);
   } else if (
     this.currentFlow === "LEGACY" &&
     this.currentSection === "HISTORIC"
   ) {
-    mainContainer.innerHTML = renderLegacyHistoric(this.bundles);
+    mainContainer.innerHTML = renderLegacyHistoric(bundles);
   }
 };
 
@@ -123,7 +176,7 @@ function renderNewFlowCleanup(bundles) {
   return `
         <div class="view-header">
             <h2>NEW FLOW | Versionamiento de Proyectos por Ambiente</h2>
-            <button class="btn-subnav" onclick="AppState.currentSection='HISTORIC'; AppState.renderCurrentView();">Consultar histórico</button>
+            <button class="btn-subnav" onclick="AppState.switchSection('HISTORIC')">Consultar histórico</button>
         </div>
         <div class="cards-grid-2">
             <div class="env-card">
@@ -147,7 +200,7 @@ function renderNewFlowHistoric(bundles, selectedEnv) {
         <div class="view-header">
             <h2>NEW FLOW | Histórico de Proyectos por Ambiente</h2>
             <div class="controls-group">
-                <button class="btn-subnav" onclick="AppState.currentSection='CLEANUP'; AppState.renderCurrentView();">Consultar versionamiento</button>
+                <button class="btn-subnav" onclick="AppState.switchSection('CLEANUP')">Consultar versionamiento</button>
                 <select class="dropdown-select" onchange="AppState.currentEnv=this.value; AppState.renderCurrentView();">
                     <option value="UAT" ${selectedEnv === "UAT" ? "selected" : ""}>UAT</option>
                     <option value="PROD-1" ${selectedEnv === "PROD-1" ? "selected" : ""}>PROD-1</option>
@@ -195,7 +248,7 @@ function renderLegacyCleanup(bundles) {
   return `
         <div class="view-header">
             <h2>LEGACY FLOW | Versionamiento de Proyectos</h2>
-            <button class="btn-subnav" onclick="AppState.currentSection='HISTORIC'; AppState.renderCurrentView();">Consultar histórico</button>
+            <button class="btn-subnav" onclick="AppState.switchSection('HISTORIC')">Consultar histórico</button>
         </div>
         <div class="table-container">
             <table class="data-table">
@@ -236,7 +289,7 @@ function renderLegacyHistoric(bundles) {
   return `
         <div class="view-header">
             <h2>LEGACY FLOW | Histórico de Proyectos</h2>
-            <button class="btn-subnav" onclick="AppState.currentSection='CLEANUP'; AppState.renderCurrentView();">Consultar versionamiento</button>
+            <button class="btn-subnav" onclick="AppState.switchSection('CLEANUP')">Consultar versionamiento</button>
         </div>
         <div class="table-container">
             <table class="data-table">
@@ -320,7 +373,7 @@ window.triggerAuthorize = async function () {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bundles: window.AppState.bundles }),
+      body: JSON.stringify({ bundles: window.AppState.scanBundles }),
     });
 
     if (response.ok) {
@@ -334,6 +387,7 @@ window.triggerAuthorize = async function () {
       a.remove();
 
       alert("Limpieza ejecutada con éxito");
+      window.AppState.historicBundles = []; // Limpiar caché histórico para recargarlo cuando consulte
       window.AppState.init();
     }
   } catch (error) {
@@ -353,8 +407,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (flowDropdown) {
     flowDropdown.addEventListener("change", (e) => {
       window.AppState.currentFlow = e.target.value;
-      window.AppState.currentSection = "CLEANUP";
-      window.AppState.renderCurrentView();
+      window.AppState.switchSection("CLEANUP");
     });
   }
 });
