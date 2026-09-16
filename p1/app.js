@@ -1,189 +1,191 @@
-// Variable global para almacenar el listado en memoria
+// Estado global en memoria
 let listaInstancias = [];
+let estadoProyectos = [];
+let proyectoSeleccionadoActual = null;
 
 // ==========================================
 // 1. INICIALIZACIÓN
 // ==========================================
-$(document).ready(function () {
+document.addEventListener("DOMContentLoaded", () => {
   cargarInstancias();
+  cargarProyectosInactivos();
   registrarEventos();
-  cargarImagenLogo();
 });
 
 // ==========================================
-// 2. REGISTRO DE EVENTOS (TODO EN UN SOLO LUGAR)
+// 2. REGISTRO DE EVENTOS NATIVO
 // ==========================================
 function registrarEventos() {
-  // Guardar nueva instancia desde el formulario principal
-  $("#btn-registrar").on("click", function () {
-    guardarInstancia();
-  });
+  // Menú desplegable Superior (Header)
+  const btnMenu = document.getElementById("btn-menu-principal");
+  const dropdownContent = document.getElementById("dropdown-content");
 
-  // Delegación de eventos para los botones de la tabla dinámicos
-  $("#tabla-instancias-body").on("click", ".btn-edit", function () {
-    const id = $(this).data("id");
-    abrirModalEditar(id);
-  });
+  if (btnMenu && dropdownContent) {
+    btnMenu.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdownContent.classList.toggle("hidden");
+    });
 
-  $("#tabla-instancias-body").on("click", ".btn-delete", function () {
-    const id = $(this).data("id");
-    eliminarInstancia(id);
-  });
+    document.addEventListener("click", () => {
+      dropdownContent.classList.add("hidden");
+    });
+  }
 
-  // Acciones dentro del Modal de Edición
-  $("#btn-cancelar-edicion").on("click", function () {
-    $("#modal-editar").addClass("hidden");
-  });
+  // Navegación SPA mediante data-target
+  document.querySelectorAll(".nav-link").forEach((link) => {
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      const targetView = link.getAttribute("data-target");
+      const textoOpcion = link.textContent.trim();
 
-  $("#btn-guardar-edicion").on("click", function () {
-    guardarEdicionInstancia();
-  });
+      if (btnMenu) btnMenu.textContent = textoOpcion;
 
-  // ---- Menú desplegable ----
-  $("#btn-menu-principal").on("click", function (e) {
-    e.stopPropagation(); // Evita que el clic se propague al documento
-    $("#dropdown-content").toggleClass("hidden");
-  });
+      document
+        .querySelectorAll(".nav-link")
+        .forEach((l) => l.classList.remove("active"));
+      link.classList.add("active");
 
-  // Cerrar el menú si se hace clic fuera de él
-  $(document).on("click", function () {
-    $("#dropdown-content").addClass("hidden");
-  });
+      document
+        .querySelectorAll(".view-section")
+        .forEach((view) => view.classList.add("hidden"));
+      const targetElement = document.getElementById(targetView);
+      if (targetElement) targetElement.classList.remove("hidden");
 
-  // ---- Navegación tipo SPA ----
-  $(".nav-link").on("click", function (e) {
-    e.preventDefault();
-    const targetView = $(this).data("target");
-
-    // Actualizar estilo del menú
-    $(".nav-link").removeClass("active");
-    $(this).addClass("active");
-
-    // Ocultar todas las vistas y mostrar la seleccionada
-    $(".view-section").addClass("hidden");
-    $("#" + targetView).removeClass("hidden");
-
-    // Si entramos a la vista de análisis, cargamos los proyectos inactivos
-    if (targetView === "view-analisis") {
-      cargarProyectosInactivos();
-    }
-  });
-
-  // ---- Selección de proyecto en la vista de análisis ----
-  // Delegado sobre document porque .btn-project se crea dinámicamente
-  $(document).on("click", ".btn-project", function () {
-    // Resaltar el botón activo
-    $(".btn-project").removeClass("active");
-    $(this).addClass("active");
-
-    const idInstancia = $(this).data("instancia");
-    const idProyecto = $(this).data("proyecto");
-    const nombreProyecto = $(this).text().trim();
-
-    consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto);
-  });
-
-  // ---- Preservar el proyecto actualmente seleccionado ----
-  // (El botón vive dentro del panel central; usamos delegación por si el panel se re-renderiza)
-  $(document).on("click", "#btn-preservar-centro", function () {
-    preservarProyectoActual();
-  });
-
-  // ---- Revertir un proyecto preservado (botón dinámico en el panel derecho) ----
-  $(document).on("click", ".btn-revertir", function () {
-    const idInstancia = $(this).data("instancia");
-    const idProyecto = $(this).data("proyecto");
-    revertirProyecto(idInstancia, idProyecto);
-  });
-
-  // ---- Ejecutar limpieza completa (botón flotante inferior) ----
-  $(document).on("click", "#btn-autorizar-cambios", function () {
-    ejecutarLimpiezaCompleta();
-  });
-}
-
-// ==========================================
-// 3. OBTENER / CARGAR INSTANCIAS (GET)
-// ==========================================
-function cargarInstancias() {
-  $.ajax({
-    url: getWebAppBackendUrl("/obtener-instancias"),
-    type: "GET",
-    success: function (response) {
-      if (response.status === "ok") {
-        listaInstancias = response.instancias || [];
-        renderizarTabla(listaInstancias);
-      } else {
-        alert("Error al cargar instancias: " + response.message);
+      if (targetView === "view-analisis") {
+        cargarProyectosInactivos();
+      } else if (targetView === "view-registro") {
+        cargarInstancias();
       }
-    },
-    error: function (err) {
-      console.error("Error en la petición GET:", err);
-    },
+    });
+  });
+
+  // Botón Registrar Instancia
+  const btnRegistrar = document.getElementById("btn-registrar");
+  if (btnRegistrar) {
+    btnRegistrar.addEventListener("click", guardarInstancia);
+  }
+
+  // Modal Edición
+  const btnCancelar = document.getElementById("btn-cancelar-edicion");
+  if (btnCancelar) {
+    btnCancelar.addEventListener("click", () => {
+      document.getElementById("modal-editar").classList.add("hidden");
+    });
+  }
+
+  const btnGuardarEdicion = document.getElementById("btn-guardar-edicion");
+  if (btnGuardarEdicion) {
+    btnGuardarEdicion.addEventListener("click", guardarEdicionInstancia);
+  }
+
+  // Filtro Select Instancias
+  const selectFiltro = document.getElementById("select-instancia-filtro");
+  if (selectFiltro) {
+    selectFiltro.addEventListener("change", (e) => {
+      renderizarPanelIzquierdo(e.target.value);
+    });
+  }
+
+  // Botón Preservar Centro
+  const btnPreservar = document.getElementById("btn-preservar-centro");
+  if (btnPreservar) {
+    btnPreservar.addEventListener("click", preservarProyectoActual);
+  }
+
+  // Botón Autorizar Limpieza
+  const btnAutorizar = document.getElementById("btn-autorizar-cambios");
+  if (btnAutorizar) {
+    btnAutorizar.addEventListener("click", ejecutarLimpiezaCompleta);
+  }
+}
+
+// ==========================================
+// 3. OBTENER Y POBLAR INSTANCIAS (FETCH)
+// ==========================================
+async function cargarInstancias() {
+  try {
+    const url = getWebAppBackendUrl("/obtener-instancias");
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.status === "ok") {
+      listaInstancias = data.instancias || [];
+      renderizarTabla(listaInstancias);
+      poblarSelectInstancias(listaInstancias);
+    } else {
+      alert("Error al cargar instancias: " + data.message);
+    }
+  } catch (err) {
+    console.error("Error en GET /obtener-instancias:", err);
+  }
+}
+
+function poblarSelectInstancias(instancias) {
+  const select = document.getElementById("select-instancia-filtro");
+  if (!select) return;
+
+  select.innerHTML = '<option value="">Seleccionar instancia</option>';
+  instancias.forEach((instancia) => {
+    const option = document.createElement("option");
+    option.value = instancia.id;
+    option.textContent = instancia.nombre;
+    select.appendChild(option);
   });
 }
 
 // ==========================================
-// 4. REGISTRAR INSTANCIA (POST)
+// 4. MANTENIMIENTO DE INSTANCIAS (FETCH)
 // ==========================================
-function guardarInstancia() {
-  const nombre = $("#nombre-instancia").val().trim();
-  const url = $("#url-instancia").val().trim();
-  const apiKey = $("#api-key").val().trim();
+async function guardarInstancia() {
+  const nombre = document.getElementById("nombre-instancia").value.trim();
+  const urlInstancia = document.getElementById("url-instancia").value.trim();
+  const apiKey = document.getElementById("api-key").value.trim();
 
-  // Validación básica del formulario (Frame 3)
-  if (!nombre || !url || !apiKey) {
+  if (!nombre || !urlInstancia || !apiKey) {
     alert("Usted no ha completado todos los campos del formulario");
     return;
   }
 
-  const payload = {
-    nombre: nombre,
-    url: url,
-    api_key: apiKey,
-  };
+  try {
+    const response = await fetch(getWebAppBackendUrl("/registrar-instancia"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre, url: urlInstancia, api_key: apiKey }),
+    });
+    const data = await response.json();
 
-  $.ajax({
-    url: getWebAppBackendUrl("/registrar-instancia"),
-    type: "POST",
-    contentType: "application/json",
-    data: JSON.stringify(payload),
-    success: function (response) {
-      if (response.status === "ok") {
-        alert("Su instancia se ha registrado con éxito");
-        limpiarFormulario();
-        cargarInstancias();
-      } else {
-        alert("Error al registrar: " + response.message);
-      }
-    },
-    error: function (err) {
-      console.error("Error en POST:", err);
-    },
-  });
+    if (data.status === "ok") {
+      alert("Su instancia se ha registrado con éxito");
+      limpiarFormulario();
+      cargarInstancias();
+    } else {
+      alert("Error al registrar: " + data.message);
+    }
+  } catch (err) {
+    console.error("Error al registrar instancia:", err);
+  }
 }
 
-// ==========================================
-// 5. EDITAR INSTANCIA (MODAL & POST)
-// ==========================================
 function abrirModalEditar(id) {
-  const instancia = listaInstancias.find((item) => item.id === id);
+  const instancia = listaInstancias.find(
+    (item) => String(item.id) === String(id),
+  );
   if (!instancia) return;
 
-  $("#edit-id").val(instancia.id);
-  $("#edit-nombre").val(instancia.nombre);
-  $("#edit-url").val(instancia.url);
-  $("#edit-api-key").val(instancia.api_key);
+  document.getElementById("edit-id").value = instancia.id;
+  document.getElementById("edit-nombre").value = instancia.nombre;
+  document.getElementById("edit-url").value = instancia.url;
+  document.getElementById("edit-api-key").value = instancia.api_key;
 
-  $("#modal-editar").removeClass("hidden");
+  document.getElementById("modal-editar").classList.remove("hidden");
 }
 
-function guardarEdicionInstancia() {
+async function guardarEdicionInstancia() {
   const payload = {
-    id: $("#edit-id").val(),
-    nombre: $("#edit-nombre").val().trim(),
-    url: $("#edit-url").val().trim(),
-    api_key: $("#edit-api-key").val().trim(),
+    id: document.getElementById("edit-id").value,
+    nombre: document.getElementById("edit-nombre").value.trim(),
+    url: document.getElementById("edit-url").value.trim(),
+    api_key: document.getElementById("edit-api-key").value.trim(),
   };
 
   if (!payload.nombre || !payload.url || !payload.api_key) {
@@ -191,392 +193,320 @@ function guardarEdicionInstancia() {
     return;
   }
 
-  $.ajax({
-    url: getWebAppBackendUrl("/actualizar-instancia"),
-    type: "POST",
-    contentType: "application/json",
-    data: JSON.stringify(payload),
-    success: function (response) {
-      if (response.status === "ok") {
-        alert("Su instancia se ha actualizado con éxito");
-        $("#modal-editar").addClass("hidden");
-        cargarInstancias();
-      } else {
-        alert("Error al actualizar: " + response.message);
-      }
-    },
-    error: function (err) {
-      console.error("Error al actualizar:", err);
-    },
-  });
-}
+  try {
+    const response = await fetch(getWebAppBackendUrl("/actualizar-instancia"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
 
-// ==========================================
-// 6. ELIMINAR INSTANCIA (POST)
-// ==========================================
-function eliminarInstancia(id) {
-  if (!confirm("¿Está seguro de que desea eliminar esta instancia?")) {
-    return;
+    if (data.status === "ok") {
+      alert("Su instancia se ha actualizado con éxito");
+      document.getElementById("modal-editar").classList.add("hidden");
+      cargarInstancias();
+    } else {
+      alert("Error al actualizar: " + data.message);
+    }
+  } catch (err) {
+    console.error("Error al actualizar:", err);
   }
-
-  $.ajax({
-    url: getWebAppBackendUrl("/eliminar-instancia"),
-    type: "POST",
-    contentType: "application/json",
-    data: JSON.stringify({ id: id }),
-    success: function (response) {
-      if (response.status === "ok") {
-        alert("Su instancia se ha eliminado con éxito");
-        cargarInstancias();
-      } else {
-        alert("Error al eliminar: " + response.message);
-      }
-    },
-    error: function (err) {
-      console.error("Error al eliminar:", err);
-    },
-  });
 }
 
-// ==========================================
-// 7. CARGAR IMAGEN DESDE MANAGED FOLDER
-// ==========================================
-function cargarImagenLogo() {
-  $.ajax({
-    url: getWebAppBackendUrl("/obtener-imagen"),
-    type: "GET",
-    success: function (response) {
-      if (response.status === "ok") {
-        // Asigna la cadena Base64 al atributo src de tu etiqueta img en el HTML
-        $("#mi-imagen-dinamica").attr(
-          "src",
-          "data:image/png;base64," + response.data,
-        );
-      } else {
-        console.warn("No se pudo cargar la imagen del logo.");
-      }
-    },
-    error: function (err) {
-      console.error("Error en la petición de la imagen:", err);
-    },
-  });
+async function eliminarInstancia(id) {
+  if (!confirm("¿Está seguro de que desea eliminar esta instancia?")) return;
+
+  try {
+    const response = await fetch(getWebAppBackendUrl("/eliminar-instancia"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await response.json();
+
+    if (data.status === "ok") {
+      alert("Su instancia se ha eliminado con éxito");
+      cargarInstancias();
+    } else {
+      alert("Error al eliminar: " + data.message);
+    }
+  } catch (err) {
+    console.error("Error al eliminar:", err);
+  }
 }
 
-// ==========================================
-// 8. RENDERIZADO DINÁMICO Y AUXILIARES
-// ==========================================
 function renderizarTabla(instancias) {
-  const tbody = $("#tabla-instancias-body");
-  tbody.empty();
+  const tbody = document.getElementById("tabla-instancias-body");
+  if (!tbody) return;
+  tbody.innerHTML = "";
 
   if (!instancias || instancias.length === 0) {
-    tbody.append(
-      '<tr><td colspan="3" class="text-center">No hay instancias registradas.</td></tr>',
-    );
+    tbody.innerHTML =
+      '<tr><td colspan="3" class="text-center">No hay instancias registradas.</td></tr>';
     return;
   }
 
-  instancias.forEach(function (item) {
-    const fila = `
-      <tr>
-        <td>${item.nombre}</td>
-        <td>${item.url}</td>
-        <td class="text-center">
-          <div class="action-buttons">
-            <button class="btn btn-action btn-edit" data-id="${item.id}">Editar</button>
-            <button class="btn btn-action btn-delete" data-id="${item.id}">Eliminar</button>
-          </div>
-        </td>
-      </tr>
+  instancias.forEach((item) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${item.nombre}</td>
+      <td>${item.url}</td>
+      <td class="text-center">
+        <div class="action-buttons">
+          <button class="btn btn-action btn-edit" onclick="abrirModalEditar('${item.id}')">Editar</button>
+          <button class="btn btn-action btn-delete" onclick="eliminarInstancia('${item.id}')">Eliminar</button>
+        </div>
+      </td>
     `;
-    tbody.append(fila);
+    tbody.appendChild(tr);
   });
 }
 
 function limpiarFormulario() {
-  $("#nombre-instancia").val("");
-  $("#url-instancia").val("");
-  $("#api-key").val("");
+  document.getElementById("nombre-instancia").value = "";
+  document.getElementById("url-instancia").value = "";
+  document.getElementById("api-key").value = "";
 }
 
 // ==========================================
-// 9. LÓGICA DE LA VISTA 2 (ANÁLISIS DE PROYECTOS)
+// 5. ANÁLISIS Y PROYECTOS INACTIVOS
 // ==========================================
+async function cargarProyectosInactivos() {
+  const listContainer = document.getElementById("sidebar-projects-list");
+  if (!listContainer) return;
+  listContainer.innerHTML =
+    '<p class="text-center">Consultando proyectos...</p>';
 
-// Estado en memoria de todos los proyectos inactivos cargados, con su estado de preservación
-let estadoProyectos = [];
-// Proyecto actualmente seleccionado en el dashboard central
-let proyectoSeleccionadoActual = null;
+  try {
+    const response = await fetch(
+      getWebAppBackendUrl("/obtener-proyectos-inactivos"),
+    );
+    const data = await response.json();
 
-// Carga la lista de instancias y sus proyectos inactivos en la barra lateral izquierda
-function cargarProyectosInactivos() {
-  const sidebar = $("#sidebar-projects");
-  sidebar
-    .empty()
-    .append('<p class="text-center">Consultando proyectos en Dataiku...</p>');
-
-  $.ajax({
-    url: getWebAppBackendUrl("/obtener-proyectos-inactivos"),
-    type: "GET",
-    success: function (response) {
-      if (response.status === "ok") {
-        // Reconstruir el estado plano de proyectos a partir de la respuesta del backend
-        estadoProyectos = [];
-        (response.datos || []).forEach(function (instancia) {
-          instancia.proyectos.forEach(function (proyecto) {
-            estadoProyectos.push({
-              id_instancia: instancia.id_instancia,
-              nombre_instancia: instancia.nombre_instancia,
-              id_proyecto: proyecto.id_proyecto,
-              nombre_proyecto: proyecto.nombre_proyecto,
-              preservado: false,
-            });
+    if (data.status === "ok") {
+      estadoProyectos = [];
+      (data.datos || []).forEach((instancia) => {
+        instancia.proyectos.forEach((proyecto) => {
+          estadoProyectos.push({
+            id_instancia: instancia.id_instancia,
+            nombre_instancia: instancia.nombre_instancia,
+            id_proyecto: proyecto.id_proyecto,
+            nombre_proyecto: proyecto.nombre_proyecto,
+            preservado: false,
           });
         });
+      });
 
-        proyectoSeleccionadoActual = null;
-        resetearDashboardCentral();
-        renderizarPanelIzquierdo();
-        renderizarPanelPreservados();
-      } else {
-        sidebar
-          .empty()
-          .append(
-            `<p class="text-center text-red">Error: ${response.message}</p>`,
-          );
-      }
-    },
-    error: function (err) {
-      console.error("Error al obtener proyectos:", err);
-      sidebar
-        .empty()
-        .append('<p class="text-center">Ocurrió un error de conexión.</p>');
-    },
-  });
+      proyectoSeleccionadoActual = null;
+      resetearDashboardCentral();
+      renderizarPanelIzquierdo(
+        document.getElementById("select-instancia-filtro").value,
+      );
+      renderizarPanelPreservados();
+    } else {
+      listContainer.innerHTML = `<p class="text-center text-red">Error: ${data.message}</p>`;
+    }
+  } catch (err) {
+    console.error("Error al obtener proyectos:", err);
+    listContainer.innerHTML = '<p class="text-center">Error de conexión.</p>';
+  }
 }
 
-// Renderiza el panel izquierdo (proyectos AÚN NO preservados), agrupados por instancia
-function renderizarPanelIzquierdo() {
-  const sidebar = $("#sidebar-projects");
-  sidebar.empty();
+function renderizarPanelIzquierdo(idInstanciaFiltro) {
+  const listContainer = document.getElementById("sidebar-projects-list");
+  if (!listContainer) return;
+  listContainer.innerHTML = "";
 
-  const activos = estadoProyectos.filter((p) => !p.preservado);
+  let activos = estadoProyectos.filter((p) => !p.preservado);
+
+  if (idInstanciaFiltro) {
+    activos = activos.filter(
+      (p) => String(p.id_instancia) === String(idInstanciaFiltro),
+    );
+  }
 
   if (activos.length === 0) {
-    sidebar.append(
-      '<p class="text-center">No hay proyectos pendientes de revisión.</p>',
-    );
+    listContainer.innerHTML =
+      '<p class="text-center">No hay proyectos pendientes.</p>';
     return;
   }
 
-  // Agrupar por instancia
-  const instanciasMap = {};
-  activos.forEach((p) => {
-    if (!instanciasMap[p.id_instancia]) {
-      instanciasMap[p.id_instancia] = {
-        nombre_instancia: p.nombre_instancia,
-        proyectos: [],
-      };
-    }
-    instanciasMap[p.id_instancia].proyectos.push(p);
-  });
+  activos.forEach((proyecto) => {
+    const esActivo =
+      proyectoSeleccionadoActual &&
+      proyectoSeleccionadoActual.id_instancia == proyecto.id_instancia &&
+      proyectoSeleccionadoActual.id_proyecto == proyecto.id_proyecto
+        ? "active"
+        : "";
 
-  Object.keys(instanciasMap).forEach(function (idInstancia) {
-    const grupo = instanciasMap[idInstancia];
-    let grupoHTML = `
-      <div class="instance-group card-panel">
-        <h3>Instancia ${grupo.nombre_instancia}</h3>
-        <div class="projects-list">
-    `;
+    const btn = document.createElement("button");
+    btn.className = `btn-project ${esActivo}`;
+    btn.textContent = proyecto.nombre_proyecto;
+    btn.onclick = () => {
+      document
+        .querySelectorAll(".btn-project")
+        .forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      consultarMétricasProyecto(
+        proyecto.id_instancia,
+        proyecto.id_proyecto,
+        proyecto.nombre_proyecto,
+        proyecto.nombre_instancia,
+      );
+    };
 
-    grupo.proyectos.forEach(function (proyecto) {
-      const esActivo =
-        proyectoSeleccionadoActual &&
-        proyectoSeleccionadoActual.id_instancia == idInstancia &&
-        proyectoSeleccionadoActual.id_proyecto == proyecto.id_proyecto
-          ? "active"
-          : "";
-      grupoHTML += `
-        <button class="btn-project ${esActivo}"
-                data-instancia="${idInstancia}"
-                data-proyecto="${proyecto.id_proyecto}">
-          ${proyecto.nombre_proyecto}
-        </button>
-      `;
-    });
-
-    grupoHTML += `</div></div>`;
-    sidebar.append(grupoHTML);
+    listContainer.appendChild(btn);
   });
 }
 
-// Renderiza el panel derecho (proyectos preservados) con su botón de revertir
 function renderizarPanelPreservados() {
-  const contenedor = $("#lista-preservados");
-  contenedor.empty();
+  const contenedor = document.getElementById("lista-preservados");
+  if (!contenedor) return;
+  contenedor.innerHTML = "";
 
   const preservados = estadoProyectos.filter((p) => p.preservado);
 
   if (preservados.length === 0) {
-    contenedor.append(
-      '<p class="text-center">Aún no hay proyectos preservados.</p>',
-    );
+    contenedor.innerHTML =
+      '<p class="text-center">Aún no hay proyectos preservados.</p>';
     return;
   }
 
-  preservados.forEach(function (p) {
-    const fila = `
-      <div class="preserved-item">
-        <div class="preserved-item-info">
-          <strong>${p.nombre_proyecto}</strong>
-          <span class="preserved-item-instancia">${p.nombre_instancia}</span>
-        </div>
-        <button class="btn btn-action btn-revertir"
-                data-instancia="${p.id_instancia}"
-                data-proyecto="${p.id_proyecto}">
-          ↩️ Revertir
-        </button>
+  preservados.forEach((p) => {
+    const div = document.createElement("div");
+    div.className = "preserved-item";
+    div.innerHTML = `
+      <div class="preserved-item-info">
+        <small class="preserved-item-instancia">${p.nombre_instancia}</small>
+        <strong>${p.nombre_proyecto}</strong>
       </div>
+      <button class="btn btn-action btn-revertir" onclick="revertirProyecto('${p.id_instancia}', '${p.id_proyecto}')">
+        Revertir
+      </button>
     `;
-    contenedor.append(fila);
+    contenedor.appendChild(div);
   });
 }
 
-// Resetea el panel central (sin selección, o tras preservar el proyecto actual)
 function resetearDashboardCentral() {
-  $("#titulo-proyecto-seleccionado").text("Seleccione un proyecto");
-  $("#css-charts-wrapper").addClass("hidden");
-  $("#mensaje-grafica-vacia")
-    .removeClass("hidden")
-    .text("Esperando selección...");
-  $(
-    "#metric-jobs, #metric-datasets, #metric-scenarios, #metric-last-mod, #metric-users",
-  ).text("-");
-  $("#btn-preservar-centro").addClass("hidden");
+  document.getElementById("subtitulo-instancia-actual").textContent =
+    "Instancia --";
+  document.getElementById("titulo-proyecto-seleccionado").textContent =
+    "Seleccione un proyecto";
+  document.getElementById("contenedor-grafica-backend").classList.add("hidden");
+
+  const msgGrafica = document.getElementById("mensaje-grafica-vacia");
+  msgGrafica.classList.remove("hidden");
+  msgGrafica.textContent = "Esperando selección...";
+
+  document.getElementById("metric-jobs").textContent = "0";
+  document.getElementById("metric-last-mod").textContent = "-";
+  document.getElementById("metric-users").textContent = "-";
+  document.getElementById("metric-commits").textContent = "0";
+  document.getElementById("btn-preservar-centro").classList.add("hidden");
 }
 
-function consultarMétricasProyecto(idInstancia, idProyecto, nombreProyecto) {
+async function consultarMétricasProyecto(
+  idInstancia,
+  idProyecto,
+  nombreProyecto,
+  nombreInstancia,
+) {
   proyectoSeleccionadoActual = {
     id_instancia: idInstancia,
     id_proyecto: idProyecto,
     nombre_proyecto: nombreProyecto,
   };
 
-  $("#titulo-proyecto-seleccionado").text(nombreProyecto);
-  $("#btn-preservar-centro").removeClass("hidden");
+  document.getElementById("subtitulo-instancia-actual").textContent =
+    nombreInstancia || `Instancia ${idInstancia}`;
+  document.getElementById("titulo-proyecto-seleccionado").textContent =
+    nombreProyecto;
+  document.getElementById("btn-preservar-centro").classList.remove("hidden");
 
-  $("#css-charts-wrapper").addClass("hidden");
-  $("#mensaje-grafica-vacia")
-    .removeClass("hidden")
-    .text("Calculando métricas...");
-  $(
-    "#metric-jobs, #metric-datasets, #metric-scenarios, #metric-last-mod, #metric-users",
-  ).text("...");
+  document.getElementById("contenedor-grafica-backend").classList.add("hidden");
+  const msgGrafica = document.getElementById("mensaje-grafica-vacia");
+  msgGrafica.classList.remove("hidden");
+  msgGrafica.textContent = "Calculando métricas...";
 
-  const payload = { instancia_id: idInstancia, proyecto_id: idProyecto };
+  document.getElementById("metric-jobs").textContent = "...";
+  document.getElementById("metric-last-mod").textContent = "...";
+  document.getElementById("metric-users").textContent = "...";
+  document.getElementById("metric-commits").textContent = "...";
 
-  $.ajax({
-    url: getWebAppBackendUrl("/analizar-proyecto"),
-    type: "POST",
-    contentType: "application/json",
-    data: JSON.stringify(payload),
-    success: function (response) {
-      if (response.status === "ok") {
-        $("#mensaje-grafica-vacia").addClass("hidden");
-        $("#css-charts-wrapper").removeClass("hidden");
-        renderizarGraficasCSS(response.datos_graficas);
-        const m = response.metricas;
-        $("#metric-jobs").text(m.jobs_ejecutados);
-        $("#metric-datasets").text(m.total_datasets);
-        $("#metric-last-mod").text(m.ultima_modificacion);
-        $("#metric-users").text(m.propietario);
-        $("#metric-scenarios").text(m.escenarios_ejecutados);
-      } else {
-        $("#mensaje-grafica-vacia")
-          .removeClass("hidden")
-          .text("Error: " + response.message);
-      }
-    },
-    error: function (err) {
-      $("#mensaje-grafica-vacia")
-        .removeClass("hidden")
-        .text("Error en la solicitud.");
-    },
-  });
+  try {
+    const response = await fetch(getWebAppBackendUrl("/analizar-proyecto"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instancia_id: idInstancia,
+        proyecto_id: idProyecto,
+      }),
+    });
+    const data = await response.json();
+
+    if (data.status === "ok") {
+      msgGrafica.classList.add("hidden");
+      document
+        .getElementById("contenedor-grafica-backend")
+        .classList.remove("hidden");
+      document.getElementById("img-grafica-analisis").src =
+        "data:image/png;base64," + data.grafica_b64;
+
+      const m = data.metricas;
+      document.getElementById("metric-jobs").textContent = m.jobs_ejecutados;
+      document.getElementById("metric-last-mod").textContent =
+        m.ultima_modificacion;
+      document.getElementById("metric-users").textContent = m.propietario;
+      document.getElementById("metric-commits").textContent = m.commits;
+    } else {
+      msgGrafica.classList.remove("hidden");
+      msgGrafica.textContent = "Error: " + data.message;
+    }
+  } catch (err) {
+    msgGrafica.classList.remove("hidden");
+    msgGrafica.textContent = "Error en la solicitud.";
+  }
 }
 
-// Función auxiliar para dibujar las barras (sin cambios)
-function renderizarGraficasCSS(datosGraficas) {
-  const vContainer = $("#chart-vertical");
-  vContainer.empty();
-  const vData = datosGraficas.tendencia;
-  const vMax = Math.max(...vData.valores, 1);
-
-  vData.valores.forEach((val, i) => {
-    const heightPct = (val / vMax) * 100;
-    vContainer.append(`
-      <div class="v-bar-container" title="Valor: ${val}">
-        <div class="v-bar" style="height: ${heightPct}%"></div>
-        <div class="v-label">${vData.etiquetas[i]}</div>
-      </div>
-    `);
-  });
-
-  const hContainer = $("#chart-horizontal");
-  hContainer.empty();
-  const hData = datosGraficas.estructura;
-  const hMax = Math.max(...hData.valores, 1);
-
-  hData.valores.forEach((val, i) => {
-    const widthPct = (val / hMax) * 80;
-    hContainer.append(`
-      <div class="h-bar-container">
-        <div class="h-label">${hData.etiquetas[i]}</div>
-        <div class="h-bar" style="width: ${widthPct}%"></div>
-        <div class="h-val">${val}</div>
-      </div>
-    `);
-  });
-}
-
-// ==========================================
-// 10. PRESERVAR / REVERTIR / EJECUTAR LIMPIEZA
-// ==========================================
-
-// Mueve el proyecto actualmente seleccionado del panel izquierdo al panel de preservados
 function preservarProyectoActual() {
   if (!proyectoSeleccionadoActual) return;
 
   const proyecto = estadoProyectos.find(
     (p) =>
-      p.id_instancia == proyectoSeleccionadoActual.id_instancia &&
-      p.id_proyecto == proyectoSeleccionadoActual.id_proyecto,
+      String(p.id_instancia) ===
+        String(proyectoSeleccionadoActual.id_instancia) &&
+      String(p.id_proyecto) === String(proyectoSeleccionadoActual.id_proyecto),
   );
   if (!proyecto) return;
 
   proyecto.preservado = true;
   proyectoSeleccionadoActual = null;
 
-  renderizarPanelIzquierdo();
+  renderizarPanelIzquierdo(
+    document.getElementById("select-instancia-filtro").value,
+  );
   renderizarPanelPreservados();
   resetearDashboardCentral();
 }
 
-// Devuelve un proyecto preservado al panel izquierdo
 function revertirProyecto(idInstancia, idProyecto) {
   const proyecto = estadoProyectos.find(
-    (p) => p.id_instancia == idInstancia && p.id_proyecto == idProyecto,
+    (p) =>
+      String(p.id_instancia) === String(idInstancia) &&
+      String(p.id_proyecto) === String(idProyecto),
   );
   if (!proyecto) return;
 
   proyecto.preservado = false;
 
-  renderizarPanelIzquierdo();
+  renderizarPanelIzquierdo(
+    document.getElementById("select-instancia-filtro").value,
+  );
   renderizarPanelPreservados();
 }
 
-// Envía al backend la lista de proyectos NO preservados para su limpieza/borrado
-function ejecutarLimpiezaCompleta() {
+async function ejecutarLimpiezaCompleta() {
   const proyectosALimpiar = estadoProyectos
     .filter((p) => !p.preservado)
     .map((p) => ({
@@ -595,44 +525,45 @@ function ejecutarLimpiezaCompleta() {
   );
   if (!confirmacion) return;
 
-  $("#btn-autorizar-cambios").prop("disabled", true).text("Procesando...");
+  const btnAutorizar = document.getElementById("btn-autorizar-cambios");
+  btnAutorizar.disabled = true;
+  btnAutorizar.textContent = "Procesando...";
 
-  $.ajax({
-    url: getWebAppBackendUrl("/ejecutar-limpieza"),
-    type: "POST",
-    contentType: "application/json",
-    data: JSON.stringify({ proyectos_a_limpiar: proyectosALimpiar }),
-    success: function (response) {
-      $("#btn-autorizar-cambios")
-        .prop("disabled", false)
-        .text("Conservar cambios y autorizar");
+  try {
+    const response = await fetch(getWebAppBackendUrl("/ejecutar-limpieza"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proyectos_a_limpiar: proyectosALimpiar }),
+    });
+    const data = await response.json();
 
-      if (response.status === "ok") {
-        alert(
-          `Limpieza finalizada.\nExitosos: ${response.exitosos}\nFallidos: ${response.fallidos}`,
-        );
+    btnAutorizar.disabled = false;
+    btnAutorizar.textContent = "Conservar cambios y autorizar";
 
-        // Quitar del estado los proyectos que sí se lograron eliminar
-        const idsExitosos = (response.detalles || [])
-          .filter((d) => d.status === "eliminado")
-          .map((d) => String(d.proyecto_id));
+    if (data.status === "ok") {
+      alert(
+        `Limpieza finalizada.\nExitosos: ${data.exitosos}\nFallidos: ${data.fallidos}`,
+      );
 
-        estadoProyectos = estadoProyectos.filter(
-          (p) => p.preservado || !idsExitosos.includes(String(p.id_proyecto)),
-        );
+      const idsExitosos = (data.detalles || [])
+        .filter((d) => d.status === "eliminado")
+        .map((d) => String(d.proyecto_id));
 
-        renderizarPanelIzquierdo();
-        renderizarPanelPreservados();
-      } else {
-        alert("Error al ejecutar la limpieza: " + response.message);
-      }
-    },
-    error: function (err) {
-      $("#btn-autorizar-cambios")
-        .prop("disabled", false)
-        .text("Conservar cambios y autorizar");
-      console.error("Error al ejecutar limpieza:", err);
-      alert("Ocurrió un error de conexión al ejecutar la limpieza.");
-    },
-  });
+      estadoProyectos = estadoProyectos.filter(
+        (p) => p.preservado || !idsExitosos.includes(String(p.id_proyecto)),
+      );
+
+      renderizarPanelIzquierdo(
+        document.getElementById("select-instancia-filtro").value,
+      );
+      renderizarPanelPreservados();
+    } else {
+      alert("Error al ejecutar la limpieza: " + data.message);
+    }
+  } catch (err) {
+    btnAutorizar.disabled = false;
+    btnAutorizar.textContent = "Conservar cambios y autorizar";
+    console.error("Error al ejecutar limpieza:", err);
+    alert("Ocurrió un error de conexión al ejecutar la limpieza.");
+  }
 }

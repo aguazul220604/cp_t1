@@ -1,7 +1,7 @@
 // ==========================================
 // APP STATE
 // ==========================================
-const AppState = {
+window.AppState = {
   periodoEjecucion: "Sep 2026",
   criterioAntiguedad: "> 6 meses",
   espacioTotalMB: 0,
@@ -70,20 +70,24 @@ const AppState = {
 // RENDERIZADO DE VISTAS
 // ==========================================
 
-AppState.renderMetrics = function () {
-  document.getElementById("stat-total").innerText =
-    `${this.getMetrics().total} MB`;
-  document.getElementById("stat-liberar").innerText =
-    `${this.getMetrics().aLiberar} MB`;
-  document.getElementById("stat-resultante").innerText =
-    `${this.getMetrics().resultante} MB`;
-  document.getElementById("stat-periodo").innerText =
-    `Periodo de ejecución: ${this.periodoEjecucion}`;
-  document.getElementById("stat-criterio").innerText =
-    `Antigüedad de versionamientos: ${this.criterioAntiguedad}`;
+window.AppState.renderMetrics = function () {
+  const statTotal = document.getElementById("stat-total");
+  const statLiberar = document.getElementById("stat-liberar");
+  const statResultante = document.getElementById("stat-resultante");
+  const statPeriodo = document.getElementById("stat-periodo");
+  const statCriterio = document.getElementById("stat-criterio");
+
+  if (statTotal) statTotal.innerText = `${this.getMetrics().total} MB`;
+  if (statLiberar) statLiberar.innerText = `${this.getMetrics().aLiberar} MB`;
+  if (statResultante)
+    statResultante.innerText = `${this.getMetrics().resultante} MB`;
+  if (statPeriodo)
+    statPeriodo.innerText = `Periodo de ejecución: ${this.periodoEjecucion}`;
+  if (statCriterio)
+    statCriterio.innerText = `Antigüedad de versionamientos: ${this.criterioAntiguedad}`;
 };
 
-AppState.renderCurrentView = function () {
+window.AppState.renderCurrentView = function () {
   const mainContainer = document.getElementById("main-content-container");
   if (!mainContainer) return;
 
@@ -308,7 +312,7 @@ function renderProjectGroups(items) {
 // ACCIONES Y EVENTOS
 // ==========================================
 
-async function triggerAuthorize() {
+window.triggerAuthorize = async function () {
   if (!confirm("¿Está seguro de autorizar la eliminación en S3?")) return;
 
   try {
@@ -316,7 +320,7 @@ async function triggerAuthorize() {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bundles: AppState.bundles }),
+      body: JSON.stringify({ bundles: window.AppState.bundles }),
     });
 
     if (response.ok) {
@@ -330,27 +334,27 @@ async function triggerAuthorize() {
       a.remove();
 
       alert("Limpieza ejecutada con éxito");
-      AppState.init();
+      window.AppState.init();
     }
   } catch (error) {
     alert("Error al procesar la autorización");
   }
-}
+};
 
-function triggerGlobalReport() {
+window.triggerGlobalReport = function () {
   const url = getWebAppBackendUrl("/global-report");
   window.open(url, "_blank");
-}
+};
 
 document.addEventListener("DOMContentLoaded", () => {
-  AppState.init();
+  window.AppState.init();
 
   const flowDropdown = document.getElementById("select-flow-dropdown");
   if (flowDropdown) {
     flowDropdown.addEventListener("change", (e) => {
-      AppState.currentFlow = e.target.value;
-      AppState.currentSection = "CLEANUP";
-      AppState.renderCurrentView();
+      window.AppState.currentFlow = e.target.value;
+      window.AppState.currentSection = "CLEANUP";
+      window.AppState.renderCurrentView();
     });
   }
 });

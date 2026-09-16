@@ -1,192 +1,238 @@
-<div class="app-container">
-  <!-- ENCABEZADO / NAVBAR CON MENÚ DESPLEGABLE -->
-  <header class="app-header">
-    <div style="display: flex; align-items: center; gap: 15px">
-      <div class="header-logo">
-        <!-- Contenedor del logo con el ID esperado por JS -->
-        <img
-          id="mi-imagen-dinamica"
-          class="logo-img"
-          src=""
-          alt="Logo"
-          style="max-height: 45px; max-width: 45px"
-        />
-      </div>
-      <div class="header-titles">
-        <span class="subtitle"
-          >Banamex | Cognitive Services and Machine Learning Core of
-          Excellence</span
-        >
-        <h1 class="title">Gestión de Limpieza de Proyectos Dataiku</h1>
-      </div>
-    </div>
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gestión de Limpieza de Proyectos Dataiku</title>
+    <link rel="stylesheet" href="styles.css" />
 
-    <!-- Dropdown Menú SPA -->
-    <div class="dropdown-menu-container">
-      <button id="btn-menu-principal" class="btn-menu">Menú ▼</button>
-      <div id="dropdown-content" class="dropdown-content hidden">
-        <a href="#" class="nav-link active" data-target="view-registro"
-          >Registro de Instancias</a
-        >
-        <a href="#" class="nav-link" data-target="view-analisis"
-          >Gestión y Limpieza</a
-        >
-      </div>
-    </div>
-  </header>
-
-  <!-- ==========================================
-       VISTA 1: REGISTRO DE INSTANCIAS 
-       ========================================== -->
-  <div id="view-registro" class="view-section">
-    <main class="dashboard-grid">
-      <!-- SECCIÓN IZQUIERDA: FORMULARIO -->
-      <section class="card-panel">
-        <h2 class="card-title">Registro de Instancias</h2>
-        <form id="form-registro" autocomplete="off">
-          <div class="form-group">
-            <label for="nombre-instancia">Nombre de Instancia</label>
-            <input
-              type="text"
-              id="nombre-instancia"
-              class="form-control"
-              required
+    <!-- 2. TU HOJA DE ESTILOS CSS -->
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- ENCABEZADO / NAVBAR CON MENÚ DESPLEGABLE -->
+      <header class="app-header">
+        <div style="display: flex; align-items: center; gap: 15px">
+          <div class="header-logo">
+            <!-- Si logo.svg no existe localmente, puedes usar una imagen temporal o SVG inline -->
+            <img
+              id="logo-banamex"
+              class="logo-img"
+              src="logo.svg"
+              alt="Logo Banamex"
+              style="max-height: 45px; max-width: 45px"
             />
           </div>
-          <div class="form-group">
-            <label for="url-instancia">URL de Instancia</label>
-            <input
-              type="text"
-              id="url-instancia"
-              class="form-control"
-              required
-            />
-          </div>
-          <div class="form-group">
-            <label for="api-key">Global API Key</label>
-            <input type="password" id="api-key" class="form-control" required />
-          </div>
-          <div class="form-actions">
-            <button type="button" id="btn-registrar" class="btn btn-primary">
-              Registrar
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <!-- SECCIÓN DERECHA: TABLA DE DATOS -->
-      <section class="card-panel">
-        <h2 class="card-title">Instancias registradas</h2>
-        <div class="table-container">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>URL</th>
-                <th class="text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody id="tabla-instancias-body">
-              <!-- Renderizado desde JS -->
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <!-- ==========================================
-       VISTA 2: ANÁLISIS DE MÉTRICAS Y LIMPIEZA 
-       ========================================== -->
-  <div id="view-analisis" class="view-section hidden">
-    <main class="analysis-grid">
-      <!-- Columna 1: Lista de Instancias y Proyectos -->
-      <aside id="sidebar-projects" class="sidebar-projects scrollable-panel">
-        <!-- Se llena dinámicamente desde JS con renderizarPanelIzquierdo() -->
-      </aside>
-
-      <!-- Columna 2: Dashboard del Proyecto Seleccionado -->
-      <section class="main-dashboard card-panel">
-        <div class="dashboard-header">
-          <h2 id="titulo-proyecto-seleccionado">Seleccione un proyecto</h2>
-        </div>
-
-        <!-- Contenedor para las gráficas CSS (VERTICAL Y HORIZONTAL) -->
-        <div class="charts-container text-center">
-          <div id="mensaje-grafica-vacia">Esperando selección...</div>
-
-          <div id="css-charts-wrapper" class="hidden">
-            <div id="chart-vertical" class="chart-container-vertical"></div>
-            <div id="chart-horizontal" class="chart-container-horizontal"></div>
+          <div class="header-titles">
+            <span class="subtitle"
+              >Banamex | Cognitive Services and Machine Learning Core of
+              Excellence</span
+            >
+            <h1 class="title">Gestión de Limpieza de Proyectos Dataiku</h1>
           </div>
         </div>
 
-        <!-- Métricas en texto -->
-        <div class="metrics-container mt-3 text-center">
-          <h3>Métricas del Proyecto</h3>
-          <ul id="lista-metricas">
-            <li>Jobs ejecutados: <span id="metric-jobs">0</span></li>
-            <li>Total Datasets: <span id="metric-datasets">0</span></li>
-            <li>Última modificación: <span id="metric-last-mod">-</span></li>
-            <li>Propietario: <span id="metric-users">-</span></li>
-            <li>
-              Escenarios configurados: <span id="metric-scenarios">0</span>
-            </li>
-          </ul>
+        <!-- Dropdown Menú SPA -->
+        <div class="dropdown-menu-container">
+          <button id="btn-menu-principal" class="btn-menu">
+            Gestión de Instancias
+          </button>
+          <div id="dropdown-content" class="dropdown-content hidden">
+            <a href="#" class="nav-link" data-target="view-analisis"
+              >Gestión de Instancias</a
+            >
+            <a href="#" class="nav-link" data-target="view-registro"
+              >Registro de Instancias</a
+            >
+          </div>
+        </div>
+      </header>
 
-          <!-- Botón Preservar dentro del Panel Central -->
-          <!-- El evento click se maneja por delegación en registrarEventos() -->
-          <button id="btn-preservar-centro" class="btn btn-success mt-3 hidden">
-            🛡️ Preservar Proyecto
+      <!-- ==========================================
+         VISTA 1: ANÁLISIS DE MÉTRICAS Y LIMPIEZA (PRINCIPAL)
+         ========================================== -->
+      <div id="view-analisis" class="view-section">
+        <main class="analysis-grid">
+          <!-- Columna 1: Filtro de Instancias y Lista de Proyectos -->
+          <aside class="sidebar-projects scrollable-panel">
+            <div class="filter-container mb-3">
+              <select id="select-instancia-filtro" class="btn-select-pill">
+                <option value="">Seleccionar instancia</option>
+              </select>
+            </div>
+            <div id="sidebar-projects-list" class="projects-container">
+              <!-- Proyectos cargados dinámicamente -->
+            </div>
+          </aside>
+
+          <!-- Columna 2: Dashboard del Proyecto Seleccionado -->
+          <section class="main-dashboard card-panel">
+            <div class="dashboard-header">
+              <span id="subtitulo-instancia-actual" class="text-muted"
+                >Instancia --</span
+              >
+              <h2 id="titulo-proyecto-seleccionado">Seleccione un proyecto</h2>
+            </div>
+
+            <!-- Contenedor para la Gráfica del Backend -->
+            <div class="charts-container text-center">
+              <div id="mensaje-grafica-vacia">Esperando selección...</div>
+              <div id="contenedor-grafica-backend" class="hidden">
+                <img
+                  id="img-grafica-analisis"
+                  src=""
+                  alt="Gráfica de Actividad"
+                  style="max-width: 100%; height: auto"
+                />
+              </div>
+            </div>
+
+            <!-- Métricas en texto -->
+            <div class="metrics-container mt-3 text-center">
+              <ul id="lista-metricas">
+                <li>Jobs ejecutados: <span id="metric-jobs">0</span></li>
+                <li>
+                  Última modificación: <span id="metric-last-mod">-</span>
+                </li>
+                <li>Propietario: <span id="metric-users">-</span></li>
+                <li>Commits: <span id="metric-commits">0</span></li>
+              </ul>
+
+              <button
+                id="btn-preservar-centro"
+                class="btn btn-warning mt-3 hidden"
+              >
+                Preservar
+              </button>
+            </div>
+          </section>
+
+          <!-- Columna 3: Proyectos Preservados -->
+          <aside class="sidebar-actions card-panel sidebar-blue">
+            <div class="preserved-panel">
+              <h3>Proyectos preservados</h3>
+              <div id="lista-preservados">
+                <!-- Se llena dinámicamente -->
+              </div>
+            </div>
+          </aside>
+        </main>
+
+        <div class="action-bar text-center p-3">
+          <button id="btn-autorizar-cambios" class="btn btn-highlight btn-lg">
+            Conservar cambios y autorizar
           </button>
         </div>
-      </section>
+      </div>
 
-      <!-- Columna 3: Proyectos Preservados y Reversión -->
-      <aside class="sidebar-actions card-panel sidebar-blue">
-        <div class="preserved-panel">
-          <h3>Proyectos Preservados</h3>
-          <div id="lista-preservados">
-            <!-- Se llena dinámicamente con JS -->
-          </div>
+      <!-- ==========================================
+         VISTA 2: REGISTRO DE INSTANCIAS (INICIALMENTE OCULTA)
+         ========================================== -->
+      <div id="view-registro" class="view-section hidden">
+        <main class="dashboard-grid">
+          <!-- SECCIÓN IZQUIERDA: FORMULARIO -->
+          <section class="card-panel">
+            <h2 class="card-title text-center">Registro de Instancias</h2>
+            <form id="form-registro" autocomplete="off">
+              <div class="form-group">
+                <label for="nombre-instancia">Nombre de Instancia</label>
+                <input
+                  type="text"
+                  id="nombre-instancia"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label for="url-instancia">URL de Instancia</label>
+                <input
+                  type="text"
+                  id="url-instancia"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label for="api-key">Global API Key</label>
+                <input
+                  type="password"
+                  id="api-key"
+                  class="form-control"
+                  required
+                />
+              </div>
+              <div class="form-actions text-center mt-3">
+                <button
+                  type="button"
+                  id="btn-registrar"
+                  class="btn btn-primary"
+                >
+                  Registrar
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <!-- SECCIÓN DERECHA: TABLA DE DATOS -->
+          <section class="card-panel">
+            <h2 class="card-title text-center">Instancias registradas</h2>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>URL</th>
+                    <th class="text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="tabla-instancias-body">
+                  <!-- Renderizado desde JS -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <!-- MODAL EDITAR INSTANCIA -->
+    <div id="modal-editar" class="modal-overlay hidden">
+      <div class="modal-content">
+        <h3>Editar Registro de Instancia</h3>
+        <input type="hidden" id="edit-id" />
+        <div class="form-group">
+          <label for="edit-nombre">Nombre actual</label>
+          <input type="text" id="edit-nombre" class="form-control" />
         </div>
-      </aside>
-    </main>
+        <div class="form-group">
+          <label for="edit-url">URL actual</label>
+          <input type="text" id="edit-url" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label for="edit-api-key">Global API Key actual</label>
+          <input type="password" id="edit-api-key" class="form-control" />
+        </div>
+        <div class="modal-actions">
+          <button
+            type="button"
+            id="btn-guardar-edicion"
+            class="btn btn-primary"
+          >
+            Confirmar
+          </button>
+          <button
+            type="button"
+            id="btn-cancelar-edicion"
+            class="btn btn-secondary"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
 
-    <!-- Botón flotante inferior -->
-    <!-- El evento click se maneja por delegación en registrarEventos() -->
-    <div class="action-bar text-end p-3">
-      <button id="btn-autorizar-cambios" class="btn btn-danger btn-lg">
-        Conservar cambios y autorizar
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL EDITAR INSTANCIA -->
-<div id="modal-editar" class="modal-overlay hidden">
-  <div class="modal-content">
-    <h3>Editar Registro de Instancia</h3>
-    <input type="hidden" id="edit-id" />
-    <div class="form-group">
-      <label for="edit-nombre">Nombre actual</label>
-      <input type="text" id="edit-nombre" class="form-control" />
-    </div>
-    <div class="form-group">
-      <label for="edit-url">URL actual</label>
-      <input type="text" id="edit-url" class="form-control" />
-    </div>
-    <div class="form-group">
-      <label for="edit-api-key">Global API Key actual</label>
-      <input type="password" id="edit-api-key" class="form-control" />
-    </div>
-    <div class="modal-actions">
-      <button type="button" id="btn-guardar-edicion" class="btn btn-primary">
-        Confirmar
-      </button>
-      <button type="button" id="btn-cancelar-edicion" class="btn btn-secondary">
-        Cancelar
-      </button>
-    </div>
-  </div>
-</div>
+    <!-- 3. TU ARCHIVO JAVASCRIPT SE CARGA AL FINAL DE BODY -->
+    <script src="app.js"></script>
+  </body>
+</html>

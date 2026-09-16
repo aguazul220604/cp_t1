@@ -27,7 +27,6 @@ def obtener_instancias():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 # ==========================================
 # 2. REGISTRAR NUEVA INSTANCIA (POST)
 # ==========================================
@@ -66,7 +65,6 @@ def registrar_instancia():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 # ==========================================
 # 3. ELIMINAR INSTANCIA (POST/DELETE)
@@ -131,25 +129,6 @@ def actualizar_instancia():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     
-    
-@app.route('/obtener-imagen')
-def obtener_imagen():
-    folder = dataiku.Folder("imagenes_webapp") 
-    image_data = folder.get_download_stream("logo.png").read() 
-    encoded_data = base64.b64encode(image_data).decode("utf-8")
-    return jsonify({"status": "ok", "data": encoded_data})
-
-
-
-
-
-
-
-
-
-
-
-
 # ==========================================
 # 5. OBTENER PROYECTOS INACTIVOS (> 4 MESES)
 # ==========================================
@@ -206,12 +185,8 @@ def obtener_proyectos_inactivos():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 # ==========================================
-# 6. ANALIZAR PROYECTO (MÉTRICAS Y GRÁFICA)
-# ==========================================
-# ==========================================
-# 6. ANALIZAR PROYECTO (MÉTRICAS Y GRÁFICA)
+# 6. ANALIZAR PROYECTO (MÉTRICAS Y GRÁFICA REAL)
 # ==========================================
 @app.route("/analizar-proyecto", methods=["POST"])
 def analizar_proyecto():
@@ -233,55 +208,108 @@ def analizar_proyecto():
         client = dataikuapi.DSSClient(url, api_key)
         client._session.verify = False
         
-        # 1. Metadatos de la instancia
+        # 1. Metadatos de la instancia y del proyecto
         proyectos = client.list_projects()
         info_proyecto = next((p for p in proyectos if p['projectKey'] == proyecto_id), {})
         
-        # 2. Conexión al proyecto específico
         project = client.get_project(proyecto_id)
         
+        # Propietario (con fallback si viene None)
+        owner_login = info_proyecto.get('ownerDisplayName') or info_proyecto.get('ownerLogin') or 'Sin propietario'
+        
+        # Última modificación
         last_mod_ms = info_proyecto.get('versionTag', {}).get('lastModifiedOn', 0)
         last_mod_str = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0).strftime('%Y-%m-%d') if last_mod_ms else "-"
-        owner_login = info_proyecto.get('ownerLogin', 'Admin')
         
-        # Conteos reales
+        # Conteos de estructura
         num_datasets = len(project.list_datasets())
         num_recipes = len(project.list_recipes())
         num_scenarios = len(project.list_scenarios())
-        num_jobs = len(project.list_jobs())
         
+        # 2. EXTRAER HISTORIAL REAL DE ACTIVIDAD (JOBS Y COMMITS)
+        actividad_por_mes = defaultdict(int)
+        total_jobs_ejecutados = 0
+        total_commits = 0
+
+        # A) Conteo y fechas de Jobs
+        try:
+            jobs = project.list_jobs()
+            total_jobs_ejecutados = len(jobs)
+            for j in jobs:
+                # Timestamp de inicio del job
+                start_ms = j.get('def', {}).get('initiationTimestamp', 0) or j.get('startTime', 0)
+                if start_ms:
+                    mes_str = datetime.datetime.fromtimestamp(start_ms / 1000.0).strftime('%Y-%m')
+                    actividad_por_mes[mes_str] += 1
+        except Exception as e_jobs:
+            print(f"No se pudieron obtener jobs: {e_jobs}")
+
+        # B) Conteo y fechas de Commits (Historial Git del Proyecto)
+        try:
+            timeline = project.get_timeline()
+            items = timeline.get('items', [])
+            total_commits = len(items)
+            for item in items:
+                commit_ms = item.get('timestamp', 0)
+                if commit_ms:
+                    mes_str = datetime.datetime.fromtimestamp(commit_ms / 1000.0).strftime('%Y-%m')
+                    actividad_por_mes[mes_str] += 1
+        except Exception as e_git:
+            print(f"No se pudo obtener timeline/git: {e_git}")
+
+        # 3. CONSTRUIR EJE X (ÚLTIMOS 12 MESES) Y DETECTAR CORTE DE 4 MESES
+        hoy = datetime.datetime.now()
+        meses_eje = []
+        actividad_eje = []
+        
+        # Generar últimos 12 meses contiguos
+        for i in range(11, -1, -1):
+            fecha_mes = hoy - datetime.timedelta(days=i*30)
+            clave_mes = fecha_mes.strftime('%Y-%m')
+            etiqueta_mes = fecha_mes.strftime('%b') # Ej: 'Ene', 'Feb'
+            
+            meses_eje.append(etiqueta_mes)
+            actividad_eje.append(actividad_por_mes.get(clave_mes, 0))
+
+        # Posición de la línea roja (hace 4 meses exactos en el eje)
+        idx_corte_4_meses = 11 - 4 
+
+        # Métricas para la respuesta JSON
         metricas = {
-            "jobs_ejecutados": num_jobs, 
+            "jobs_ejecutados": total_jobs_ejecutados, 
             "total_datasets": num_datasets,
             "ultima_modificacion": last_mod_str,
             "propietario": owner_login,
-            "escenarios_ejecutados": num_scenarios
+            "escenarios_ejecutados": num_scenarios,
+            "commits": total_commits
         }
 
-        # 3. GENERAR GRÁFICA DE MATPLOTLIB
-        plt.close('all') # Limpiar figuras previas de la memoria
-        
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 3.5), facecolor='white')
-        
-        # Gráfica 1: Historial estimado de actividad
-        meses = ['M-4', 'M-3', 'M-2', 'M-1', 'Actual']
-        actividad = [num_jobs, int(num_jobs*0.5), 0, 0, 0] 
-        ax1.bar(meses, actividad, color='#178096')
-        ax1.set_title('Tendencia de Jobs', fontsize=11, fontweight='bold')
-        ax1.grid(axis='y', linestyle='--', alpha=0.5)
+        # 4. GENERAR GRÁFICAS CON MATPLOTLIB
+        plt.close('all')
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.8), facecolor='white')
 
-        # Gráfica 2: Objetos en el Flujo
+        # --- Gráfica 1: Serie Temporal de Actividad ---
+        ax1.plot(meses_eje, actividad_eje, color='#0044ff', linewidth=2, marker='o', markersize=4)
+        ax1.axvline(x=idx_corte_4_meses, color='red', linestyle='--', linewidth=1.8, label='Umbral 4M')
+        ax1.set_title('Nivel de Actividad (Histórico)', fontsize=10, fontweight='bold')
+        ax1.set_ylabel('Acciones (Jobs + Ediciones)', fontsize=8)
+        ax1.tick_params(axis='x', rotation=45, labelsize=8)
+        ax1.grid(True, linestyle=':', alpha=0.6)
+        ax1.legend(loc='upper right', fontsize=7)
+
+        # --- Gráfica 2: Objetos en el Flujo ---
         clases = ['Datasets', 'Recetas', 'Escenarios']
         valores = [num_datasets, num_recipes, num_scenarios]
-        ax2.barh(clases, valores, color='#ff6b00')
-        ax2.set_title('Estructura del Proyecto', fontsize=11, fontweight='bold')
+        ax2.barh(clases, valores, color='#0055ff', height=0.5)
+        ax2.set_title('Estructura del Proyecto', fontsize=10, fontweight='bold')
+        ax2.tick_params(axis='both', labelsize=8)
         ax2.grid(axis='x', linestyle='--', alpha=0.5)
 
         plt.tight_layout()
 
-        # 4. Guardar en buffer en formato PNG sin transparencias problemáticas
+        # 5. Convertir gráfica a base64
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=110, bbox_inches='tight')
         buf.seek(0)
         plot_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
         plt.close(fig)
@@ -294,7 +322,6 @@ def analizar_proyecto():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    
 
 # ==========================================
 # 7. EJECUTAR LIMPIEZA / BORRADO DE PROYECTOS
