@@ -1,14 +1,13 @@
 // ==========================================
-// APP STATE
+// APP STATE (Métricas Globales S3)
 // ==========================================
 window.AppState = {
   periodoEjecucion: "Sep 2026",
   criterioAntiguedad: "> 6 meses",
-  espacioTotalMB: 0,
 
-  // Separación de estados para evitar cruce de datos
-  scanBundles: [], // Provenientes de /scan-bundles (S3 activo)
-  historicBundles: [], // Provenientes de /get-historical (Tabla historical)
+  // Arreglos de estado
+  scanBundles: [], // S3 activo -> ORIGEN DE VERDAD PARA MÉTRICAS
+  historicBundles: [], // Dataset 'historical' -> SOLO PARA LA TABLA HISTÓRICO
 
   currentFlow: "NEW",
   currentSection: "CLEANUP", // "CLEANUP" o "HISTORIC"
@@ -21,7 +20,6 @@ window.AppState = {
     await this.fetchScanBundles();
   },
 
-  // Obtener versionamiento activo desde S3
   async fetchScanBundles() {
     this.isLoading = true;
     this.renderCurrentView();
@@ -46,7 +44,6 @@ window.AppState = {
     }
   },
 
-  // Obtener registros preservados desde el dataset 'historical'
   async fetchHistoricBundles() {
     this.isLoading = true;
     this.renderCurrentView();
@@ -63,42 +60,38 @@ window.AppState = {
       console.error("Error al obtener /get-historical:", error);
     } finally {
       this.isLoading = false;
-      this.renderMetrics();
+      this.renderMetrics(); // Re-renderiza las métricas globales para asegurar coherencia
       this.renderCurrentView();
     }
   },
 
-  // Cambiar de sección y cargar el endpoint correspondiente si es necesario
   async switchSection(section) {
     this.currentSection = section;
 
     if (section === "HISTORIC" && this.historicBundles.length === 0) {
       await this.fetchHistoricBundles();
-    } else if (section === "CLEANUP" && this.scanBundles.length === 0) {
-      await this.fetchScanBundles();
     } else {
       this.renderMetrics();
       this.renderCurrentView();
     }
   },
 
-  // Retorna los bundles correspondientes a la sección actual
   get activeBundles() {
     return this.currentSection === "CLEANUP"
       ? this.scanBundles
       : this.historicBundles;
   },
 
+  // MÉTRICAS SIEMPRE GLOBALES (Basadas en el escaneo completo de S3)
   getMetrics() {
-    const currentList = this.activeBundles || [];
+    const s3List = this.scanBundles || [];
 
-    // Aseguramos que la conversión a número sea estricta usando parseFloat
-    const totalMB = currentList.reduce(
+    const totalMB = s3List.reduce(
       (acc, b) => acc + (parseFloat(b.size_mb) || 0),
       0,
     );
 
-    const espacioALiberar = currentList
+    const espacioALiberar = s3List
       .filter((b) => b.estado === "Descartado")
       .reduce((acc, b) => acc + (parseFloat(b.size_mb) || 0), 0);
 
@@ -111,13 +104,27 @@ window.AppState = {
     };
   },
 
+  // CAMBIO DE ESTATUS SINCRONIZADO
   toggleStatus(s3_path) {
-    const item = this.activeBundles.find((b) => b.s3_path === s3_path);
-    if (item) {
-      item.estado = item.estado === "Conservado" ? "Descartado" : "Conservado";
-      this.renderMetrics();
-      this.renderCurrentView();
+    // 1. Actualizar en el estado principal (scanBundles)
+    const scanItem = this.scanBundles.find((b) => b.s3_path === s3_path);
+    if (scanItem) {
+      scanItem.estado =
+        scanItem.estado === "Conservado" ? "Descartado" : "Conservado";
     }
+
+    // 2. Si el registro también se muestra en la vista de Histórico, actualizar su vista
+    const historicItem = this.historicBundles.find(
+      (b) => b.s3_path === s3_path,
+    );
+    if (historicItem) {
+      historicItem.estado =
+        historicItem.estado === "Conservado" ? "Descartado" : "Conservado";
+    }
+
+    // 3. Recalcular las métricas globales de S3 y refrescar la pantalla
+    this.renderMetrics();
+    this.renderCurrentView();
   },
 };
 
