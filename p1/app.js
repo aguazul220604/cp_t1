@@ -4,6 +4,19 @@ let estadoProyectos = [];
 let proyectoSeleccionadoActual = null;
 
 // ==========================================
+// UTILIDADES
+// ==========================================
+function escapeHtml(valor) {
+  if (valor === null || valor === undefined) return "";
+  return String(valor)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+// ==========================================
 // INICIALIZACIÓN
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
@@ -249,12 +262,12 @@ function renderizarTabla(instancias) {
   instancias.forEach((item) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${item.nombre}</td>
-      <td>${item.url}</td>
+      <td>${escapeHtml(item.nombre)}</td>
+      <td>${escapeHtml(item.url)}</td>
       <td class="text-center">
         <div class="action-buttons">
-          <button class="btn btn-action btn-edit" onclick="abrirModalEditar('${item.id}')">Editar</button>
-          <button class="btn btn-action btn-delete" onclick="eliminarInstancia('${item.id}')">Eliminar</button>
+          <button class="btn btn-action btn-edit" onclick="abrirModalEditar('${escapeHtml(item.id)}')">Editar</button>
+          <button class="btn btn-action btn-delete" onclick="eliminarInstancia('${escapeHtml(item.id)}')">Eliminar</button>
         </div>
       </td>
     `;
@@ -277,6 +290,14 @@ async function cargarProyectosInactivos() {
   listContainer.innerHTML =
     '<p class="text-center">Consultando proyectos...</p>';
 
+  // Recordar qué proyectos ya estaban preservados antes de refrescar,
+  // para no perder ese estado al volver a consultar el backend.
+  const preservadosPrevios = new Set(
+    estadoProyectos
+      .filter((p) => p.preservado)
+      .map((p) => `${p.id_instancia}-${p.id_proyecto}`),
+  );
+
   try {
     const response = await fetch(
       getWebAppBackendUrl("/obtener-proyectos-inactivos"),
@@ -287,12 +308,13 @@ async function cargarProyectosInactivos() {
       estadoProyectos = [];
       (data.datos || []).forEach((instancia) => {
         instancia.proyectos.forEach((proyecto) => {
+          const clave = `${instancia.id_instancia}-${proyecto.id_proyecto}`;
           estadoProyectos.push({
             id_instancia: instancia.id_instancia,
             nombre_instancia: instancia.nombre_instancia,
             id_proyecto: proyecto.id_proyecto,
             nombre_proyecto: proyecto.nombre_proyecto,
-            preservado: false,
+            preservado: preservadosPrevios.has(clave),
           });
         });
       });
@@ -304,7 +326,7 @@ async function cargarProyectosInactivos() {
       );
       renderizarPanelPreservados();
     } else {
-      listContainer.innerHTML = `<p class="text-center text-red">Error: ${data.message}</p>`;
+      listContainer.innerHTML = `<p class="text-center text-red">Error: ${escapeHtml(data.message)}</p>`;
     }
   } catch (err) {
     console.error("Error al obtener proyectos:", err);
@@ -347,7 +369,7 @@ function renderizarPanelIzquierdo(idInstanciaFiltro) {
         .querySelectorAll(".btn-project")
         .forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      consultarMétricasProyecto(
+      consultarMetricasProyecto(
         proyecto.id_instancia,
         proyecto.id_proyecto,
         proyecto.nombre_proyecto,
@@ -377,10 +399,10 @@ function renderizarPanelPreservados() {
     div.className = "preserved-item";
     div.innerHTML = `
       <div class="preserved-item-info">
-        <small class="preserved-item-instancia">${p.nombre_instancia}</small>
-        <strong>${p.nombre_proyecto}</strong>
+        <small class="preserved-item-instancia">${escapeHtml(p.nombre_instancia)}</small>
+        <strong>${escapeHtml(p.nombre_proyecto)}</strong>
       </div>
-      <button class="btn btn-action btn-revertir" onclick="revertirProyecto('${p.id_instancia}', '${p.id_proyecto}')">
+      <button class="btn btn-action btn-revertir" onclick="revertirProyecto('${escapeHtml(p.id_instancia)}', '${escapeHtml(p.id_proyecto)}')">
         Revertir
       </button>
     `;
@@ -406,7 +428,7 @@ function resetearDashboardCentral() {
   document.getElementById("btn-preservar-centro").classList.add("hidden");
 }
 
-async function consultarMétricasProyecto(
+async function consultarMetricasProyecto(
   idInstancia,
   idProyecto,
   nombreProyecto,

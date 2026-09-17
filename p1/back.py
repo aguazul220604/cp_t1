@@ -1,11 +1,19 @@
+import io
+import base64
+import datetime
+from collections import defaultdict
 import dataiku
+import dataikuapi
 import pandas as pd
 from flask import request, jsonify
+import matplotlib
+matplotlib.use("Agg") 
+import matplotlib.pyplot as plt
 
 DATASET_NAME = "instances"
 
 # ==========================================
-# OBTENER INSTANCIAS 
+# OBTENER INSTANCIAS
 # ==========================================
 @app.route("/obtener-instancias", methods=["GET"])
 def obtener_instancias():
@@ -36,17 +44,15 @@ def registrar_instancia():
         url = data.get("url", "").strip()
         api_key = data.get("api_key", "").strip()
 
-        # Validación 
         if not nombre or not url or not api_key:
             return jsonify({
-                "status": "error", 
+                "status": "error",
                 "message": "Usted no ha completado todos los campos del formulario"
             }), 400
 
         dataset = dataiku.Dataset(DATASET_NAME)
         df_actual = dataset.get_dataframe()
 
-        # Generar ID
         nuevo_id = 1 if df_actual.empty else len(df_actual) + 1
 
         nuevo_registro = pd.DataFrame([{
@@ -79,7 +85,6 @@ def eliminar_instancia():
         dataset = dataiku.Dataset(DATASET_NAME)
         df = dataset.get_dataframe()
 
-        # Filtrar 
         df_filtrado = df[df["id"] != int(instancia_id)]
 
         dataset.write_with_schema(df_filtrado)
@@ -87,9 +92,7 @@ def eliminar_instancia():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    
-    
-    
+
 # ==========================================
 # ACTUALIZAR INSTANCIA
 # ==========================================
@@ -104,18 +107,16 @@ def actualizar_instancia():
 
         if instancia_id is None or not nombre or not url or not api_key:
             return jsonify({
-                "status": "error", 
+                "status": "error",
                 "message": "Usted no ha completado todos los campos del formulario"
             }), 400
 
         dataset = dataiku.Dataset(DATASET_NAME)
         df = dataset.get_dataframe()
 
-        # Verificar si el registro existe
         if int(instancia_id) not in df["id"].values:
             return jsonify({"status": "error", "message": "Instancia no encontrada"}), 404
 
-        # Actualizar los valores 
         idx = df.index[df["id"] == int(instancia_id)].tolist()[0]
         df.loc[idx, "nombre"] = nombre
         df.loc[idx, "url"] = url
@@ -126,7 +127,7 @@ def actualizar_instancia():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    
+
 # ==========================================
 # OBTENER PROYECTOS INACTIVOS (> 4 MESES)
 # ==========================================
@@ -135,7 +136,7 @@ def obtener_proyectos_inactivos():
     try:
         dataset = dataiku.Dataset(DATASET_NAME)
         df_instancias = dataset.get_dataframe()
-        
+
         if df_instancias.empty:
             return jsonify({"status": "ok", "datos": []})
 
@@ -147,20 +148,20 @@ def obtener_proyectos_inactivos():
             nombre = row['nombre']
             url = row['url']
             api_key = row['api_key']
-            
+
             proyectos_inactivos = []
-            
+
             try:
                 client = dataikuapi.DSSClient(url, api_key)
-                client._session.verify = False 
-                
+                client._session.verify = False
+
                 proyectos = client.list_projects()
-                
+
                 for p in proyectos:
                     last_mod_ms = p.get('versionTag', {}).get('lastModifiedOn', 0)
                     if last_mod_ms > 0:
                         last_mod_date = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0)
-                        
+
                         if last_mod_date < fecha_limite:
                             proyectos_inactivos.append({
                                 "id_proyecto": p['projectKey'],
@@ -168,7 +169,7 @@ def obtener_proyectos_inactivos():
                             })
             except Exception as ex_instancia:
                 print(f"Error conectando a instancia {nombre}: {ex_instancia}")
-            
+
             if proyectos_inactivos:
                 datos_finales.append({
                     "id_instancia": int(id_instancia),
@@ -190,44 +191,40 @@ def analizar_proyecto():
         data = request.get_json() or {}
         instancia_id = data.get("instancia_id")
         proyecto_id = data.get("proyecto_id")
-        
+
         dataset = dataiku.Dataset(DATASET_NAME)
         df = dataset.get_dataframe()
         fila = df[df["id"] == int(instancia_id)]
-        
+
         if fila.empty:
             return jsonify({"status": "error", "message": "Instancia no encontrada"}), 404
-            
+
         url = fila.iloc[0]["url"]
         api_key = fila.iloc[0]["api_key"]
-        
+
         client = dataikuapi.DSSClient(url, api_key)
         client._session.verify = False
-        
+
         # 1. Metadatos de la instancia y del proyecto
         proyectos = client.list_projects()
         info_proyecto = next((p for p in proyectos if p['projectKey'] == proyecto_id), {})
-        
+
         project = client.get_project(proyecto_id)
-        
-        # Propietario
+
         owner_login = info_proyecto.get('ownerDisplayName') or info_proyecto.get('ownerLogin') or 'Sin propietario'
-        
-        # Última modificación
+
         last_mod_ms = info_proyecto.get('versionTag', {}).get('lastModifiedOn', 0)
         last_mod_str = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0).strftime('%Y-%m-%d') if last_mod_ms else "-"
-        
-        # Conteos de estructura
+
         num_datasets = len(project.list_datasets())
         num_recipes = len(project.list_recipes())
         num_scenarios = len(project.list_scenarios())
-        
-        # 2. EXTRAER HISTORIAL DE ACTIVIDAD 
+
+        # 2. EXTRAER HISTORIAL DE ACTIVIDAD
         actividad_por_mes = defaultdict(int)
         total_jobs_ejecutados = 0
         total_commits = 0
 
-        # Conteo y fechas de Jobs
         try:
             jobs = project.list_jobs()
             total_jobs_ejecutados = len(jobs)
@@ -239,7 +236,6 @@ def analizar_proyecto():
         except Exception as e_jobs:
             print(f"No se pudieron obtener jobs: {e_jobs}")
 
-        # Conteo y fechas de Commits 
         try:
             timeline = project.get_timeline()
             items = timeline.get('items', [])
@@ -255,22 +251,19 @@ def analizar_proyecto():
         hoy = datetime.datetime.now()
         meses_eje = []
         actividad_eje = []
-        
-        # Generar últimos 12 meses 
+
         for i in range(11, -1, -1):
-            fecha_mes = hoy - datetime.timedelta(days=i*30)
+            fecha_mes = hoy - datetime.timedelta(days=i * 30)
             clave_mes = fecha_mes.strftime('%Y-%m')
-            etiqueta_mes = fecha_mes.strftime('%b') 
-            
+            etiqueta_mes = fecha_mes.strftime('%b')
+
             meses_eje.append(etiqueta_mes)
             actividad_eje.append(actividad_por_mes.get(clave_mes, 0))
 
-        # hace 4 meses exactos 
-        idx_corte_4_meses = 11 - 4 
+        idx_corte_4_meses = 11 - 4
 
-        # Métricas para la respuesta JSON
         metricas = {
-            "jobs_ejecutados": total_jobs_ejecutados, 
+            "jobs_ejecutados": total_jobs_ejecutados,
             "total_datasets": num_datasets,
             "ultima_modificacion": last_mod_str,
             "propietario": owner_login,
@@ -282,7 +275,6 @@ def analizar_proyecto():
         plt.close('all')
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.8), facecolor='white')
 
-        # Gráfica 1: Serie Temporal de Actividad
         ax1.plot(meses_eje, actividad_eje, color='#0044ff', linewidth=2, marker='o', markersize=4)
         ax1.axvline(x=idx_corte_4_meses, color='red', linestyle='--', linewidth=1.8, label='Umbral 4M')
         ax1.set_title('Nivel de Actividad (Histórico)', fontsize=10, fontweight='bold')
@@ -291,7 +283,6 @@ def analizar_proyecto():
         ax1.grid(True, linestyle=':', alpha=0.6)
         ax1.legend(loc='upper right', fontsize=7)
 
-        # Gráfica 2: Objetos en el Flujo
         clases = ['Datasets', 'Recetas', 'Escenarios']
         valores = [num_datasets, num_recipes, num_scenarios]
         ax2.barh(clases, valores, color='#0055ff', height=0.5)
@@ -301,7 +292,6 @@ def analizar_proyecto():
 
         plt.tight_layout()
 
-        # 5. Convertir gráfica a base64
         buf = io.BytesIO()
         plt.savefig(buf, format='png', dpi=110, bbox_inches='tight')
         buf.seek(0)
@@ -309,7 +299,7 @@ def analizar_proyecto():
         plt.close(fig)
 
         return jsonify({
-            "status": "ok", 
+            "status": "ok",
             "metricas": metricas,
             "grafica_b64": plot_base64
         })
@@ -325,13 +315,13 @@ def ejecutar_limpieza():
     try:
         data = request.get_json() or {}
         proyectos_a_limpiar = data.get("proyectos_a_limpiar", [])
-        
+
         if not proyectos_a_limpiar:
             return jsonify({"status": "ok", "message": "No hay proyectos pendientes por limpiar.", "exitosos": 0, "fallidos": 0})
 
         dataset = dataiku.Dataset(DATASET_NAME)
         df = dataset.get_dataframe()
-        
+
         exitosos = 0
         fallidos = 0
         detalles = []
@@ -339,22 +329,21 @@ def ejecutar_limpieza():
         for item in proyectos_a_limpiar:
             instancia_id = item.get("instancia_id")
             proyecto_id = item.get("proyecto_id")
-            
+
             fila = df[df["id"] == int(instancia_id)]
             if fila.empty:
                 fallidos += 1
                 detalles.append({"proyecto_id": proyecto_id, "status": "error", "message": "Instancia no encontrada"})
                 continue
-                
+
             url = fila.iloc[0]["url"]
             api_key = fila.iloc[0]["api_key"]
             nombre_inst = fila.iloc[0]["nombre"]
-            
+
             try:
                 client = dataikuapi.DSSClient(url, api_key)
                 client._session.verify = False
-                
-                # Obtener el proyecto y ejecutar borrado profundo según los parámetros requeridos
+
                 project = client.get_project(proyecto_id)
                 project.delete(
                     clear_managed_datasets=True,
@@ -376,5 +365,3 @@ def ejecutar_limpieza():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
-
