@@ -369,8 +369,6 @@ function construirSvgActividad(meses, valores, corteIdx) {
 
   const etiquetasEje = meses
     .map((m, i) => {
-      // Para no saturar el eje en pantallas chicas, se omiten etiquetas intermedias
-      if (n > 8 && i % 2 !== 0 && i !== n - 1) return "";
       return `<text x="${posX(i)}" y="${alto - 8}" font-size="9" text-anchor="middle" fill="#666">${escapeHtml(m)}</text>`;
     })
     .join("");
