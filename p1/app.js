@@ -282,6 +282,180 @@ function limpiarFormulario() {
 }
 
 // ==========================================
+// GRÁFICAS NATIVAS (SVG + CSS, sin librerías)
+// ==========================================
+let estilosGraficasInyectados = false;
+
+function inyectarEstilosGraficas() {
+  if (estilosGraficasInyectados) return;
+
+  const style = document.createElement("style");
+  style.textContent = `
+    .grafica-panel {
+      background: #ffffff;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .grafica-panel:last-child {
+      margin-bottom: 0;
+    }
+    .grafica-panel h4 {
+      margin: 0 0 10px 0;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #333;
+    }
+    .grafica-actividad-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .grafica-estructura-lista {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .grafica-estructura-fila {
+      display: grid;
+      grid-template-columns: 90px 1fr 36px;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: #333;
+    }
+    .grafica-estructura-barra-fondo {
+      background: #e3edf7;
+      border-radius: 6px;
+      height: 14px;
+      overflow: hidden;
+    }
+    .grafica-estructura-barra-relleno {
+      background: #0055ff;
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.4s ease;
+    }
+  `;
+  document.head.appendChild(style);
+  estilosGraficasInyectados = true;
+}
+
+function construirSvgActividad(meses, valores, corteIdx) {
+  const ancho = 560;
+  const alto = 200;
+  const margenIzq = 30;
+  const margenDer = 10;
+  const margenSup = 16;
+  const margenInf = 30;
+
+  const anchoUtil = ancho - margenIzq - margenDer;
+  const altoUtil = alto - margenSup - margenInf;
+
+  const n = valores.length;
+  const maxValor = Math.max(1, ...valores);
+
+  const posX = (i) => margenIzq + (n === 1 ? 0 : (i / (n - 1)) * anchoUtil);
+  const posY = (v) => margenSup + altoUtil - (v / maxValor) * altoUtil;
+
+  const puntos = valores.map((v, i) => `${posX(i)},${posY(v)}`).join(" ");
+
+  const circulos = valores
+    .map(
+      (v, i) =>
+        `<circle cx="${posX(i)}" cy="${posY(v)}" r="3" fill="#0044ff"></circle>`,
+    )
+    .join("");
+
+  const etiquetasEje = meses
+    .map((m, i) => {
+      // Para no saturar el eje en pantallas chicas, se omiten etiquetas intermedias
+      if (n > 8 && i % 2 !== 0 && i !== n - 1) return "";
+      return `<text x="${posX(i)}" y="${alto - 8}" font-size="9" text-anchor="middle" fill="#666">${escapeHtml(m)}</text>`;
+    })
+    .join("");
+
+  const hayCorte =
+    corteIdx !== null &&
+    corteIdx !== undefined &&
+    corteIdx >= 0 &&
+    corteIdx < n;
+  const xCorte = hayCorte ? posX(corteIdx) : 0;
+  const lineaCorte = hayCorte
+    ? `<line x1="${xCorte}" y1="${margenSup}" x2="${xCorte}" y2="${alto - margenInf}" stroke="#ff3b3b" stroke-width="1.5" stroke-dasharray="4,3"></line>
+       <text x="${xCorte}" y="${margenSup - 4}" font-size="8" fill="#ff3b3b" text-anchor="middle">Umbral 4M</text>`
+    : "";
+
+  return `
+    <svg class="grafica-actividad-svg" viewBox="0 0 ${ancho} ${alto}" xmlns="http://www.w3.org/2000/svg">
+      <line x1="${margenIzq}" y1="${margenSup}" x2="${margenIzq}" y2="${alto - margenInf}" stroke="#ddd" stroke-width="1"></line>
+      <line x1="${margenIzq}" y1="${alto - margenInf}" x2="${ancho - margenDer}" y2="${alto - margenInf}" stroke="#ddd" stroke-width="1"></line>
+      ${lineaCorte}
+      <polyline points="${puntos}" fill="none" stroke="#0044ff" stroke-width="2"></polyline>
+      ${circulos}
+      ${etiquetasEje}
+    </svg>
+  `;
+}
+
+function construirHtmlEstructura(datasets, recetas, escenarios) {
+  const items = [
+    { label: "Datasets", valor: datasets || 0 },
+    { label: "Recetas", valor: recetas || 0 },
+    { label: "Escenarios", valor: escenarios || 0 },
+  ];
+  const maxValor = Math.max(1, ...items.map((i) => i.valor));
+
+  const filas = items
+    .map((item) => {
+      const porcentaje = Math.round((item.valor / maxValor) * 100);
+      return `
+        <div class="grafica-estructura-fila">
+          <span>${escapeHtml(item.label)}</span>
+          <div class="grafica-estructura-barra-fondo">
+            <div class="grafica-estructura-barra-relleno" style="width: ${porcentaje}%;"></div>
+          </div>
+          <span>${escapeHtml(String(item.valor))}</span>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `<div class="grafica-estructura-lista">${filas}</div>`;
+}
+
+function renderizarGraficasProyecto(actividad, estructura) {
+  inyectarEstilosGraficas();
+
+  const contenedor = document.getElementById("contenedor-grafica-backend");
+  if (!contenedor) return;
+
+  const datosActividad = actividad || {
+    meses: [],
+    valores: [],
+    corte_4_meses: null,
+  };
+  const datosEstructura = estructura || {
+    datasets: 0,
+    recetas: 0,
+    escenarios: 0,
+  };
+
+  contenedor.innerHTML = `
+    <div class="grafica-panel">
+      <h4>Nivel de Actividad (Histórico)</h4>
+      ${construirSvgActividad(datosActividad.meses, datosActividad.valores, datosActividad.corte_4_meses)}
+    </div>
+    <div class="grafica-panel">
+      <h4>Estructura del Proyecto</h4>
+      ${construirHtmlEstructura(datosEstructura.datasets, datosEstructura.recetas, datosEstructura.escenarios)}
+    </div>
+  `;
+
+  contenedor.classList.remove("hidden");
+}
+
+// ==========================================
 // ANÁLISIS Y PROYECTOS INACTIVOS
 // ==========================================
 async function cargarProyectosInactivos() {
@@ -469,11 +643,7 @@ async function consultarMetricasProyecto(
 
     if (data.status === "ok") {
       msgGrafica.classList.add("hidden");
-      document
-        .getElementById("contenedor-grafica-backend")
-        .classList.remove("hidden");
-      document.getElementById("img-grafica-analisis").src =
-        "data:image/png;base64," + data.grafica_b64;
+      renderizarGraficasProyecto(data.actividad, data.estructura);
 
       const m = data.metricas;
       document.getElementById("metric-jobs").textContent = m.jobs_ejecutados;

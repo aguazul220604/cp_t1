@@ -1,14 +1,10 @@
-import io
-import base64
 import datetime
 from collections import defaultdict
+
 import dataiku
 import dataikuapi
 import pandas as pd
 from flask import request, jsonify
-import matplotlib
-matplotlib.use("Agg") 
-import matplotlib.pyplot as plt
 
 DATASET_NAME = "instances"
 
@@ -183,7 +179,7 @@ def obtener_proyectos_inactivos():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==========================================
-# ANALIZAR PROYECTO (MÉTRICAS Y GRÁFICA)
+# ANALIZAR PROYECTO (MÉTRICAS Y DATOS PARA GRÁFICAS)
 # ==========================================
 @app.route("/analizar-proyecto", methods=["POST"])
 def analizar_proyecto():
@@ -271,37 +267,24 @@ def analizar_proyecto():
             "commits": total_commits
         }
 
-        # 4. GENERAR GRÁFICAS
-        plt.close('all')
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.8), facecolor='white')
+        # 3. Datos crudos para que el frontend dibuje las gráficas (sin matplotlib)
+        actividad = {
+            "meses": meses_eje,
+            "valores": actividad_eje,
+            "corte_4_meses": idx_corte_4_meses
+        }
 
-        ax1.plot(meses_eje, actividad_eje, color='#0044ff', linewidth=2, marker='o', markersize=4)
-        ax1.axvline(x=idx_corte_4_meses, color='red', linestyle='--', linewidth=1.8, label='Umbral 4M')
-        ax1.set_title('Nivel de Actividad (Histórico)', fontsize=10, fontweight='bold')
-        ax1.set_ylabel('Acciones (Jobs + Ediciones)', fontsize=8)
-        ax1.tick_params(axis='x', rotation=45, labelsize=8)
-        ax1.grid(True, linestyle=':', alpha=0.6)
-        ax1.legend(loc='upper right', fontsize=7)
-
-        clases = ['Datasets', 'Recetas', 'Escenarios']
-        valores = [num_datasets, num_recipes, num_scenarios]
-        ax2.barh(clases, valores, color='#0055ff', height=0.5)
-        ax2.set_title('Estructura del Proyecto', fontsize=10, fontweight='bold')
-        ax2.tick_params(axis='both', labelsize=8)
-        ax2.grid(axis='x', linestyle='--', alpha=0.5)
-
-        plt.tight_layout()
-
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=110, bbox_inches='tight')
-        buf.seek(0)
-        plot_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-        plt.close(fig)
+        estructura = {
+            "datasets": num_datasets,
+            "recetas": num_recipes,
+            "escenarios": num_scenarios
+        }
 
         return jsonify({
             "status": "ok",
             "metricas": metricas,
-            "grafica_b64": plot_base64
+            "actividad": actividad,
+            "estructura": estructura
         })
 
     except Exception as e:
