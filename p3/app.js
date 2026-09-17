@@ -20,6 +20,23 @@ window.AppState = {
     await this.fetchScanBundles();
   },
 
+  getBundleSize(b) {
+    const v = b.size ?? b.size_mb;
+    return parseFloat(v) || 0;
+  },
+
+  // Unión deduplicada por s3_path (scan + histórico) para métricas y authorize.
+  getUnionBundles() {
+    const map = new Map();
+    for (const b of this.scanBundles || []) {
+      if (b && b.s3_path) map.set(b.s3_path, b);
+    }
+    for (const b of this.historicBundles || []) {
+      if (b && b.s3_path && !map.has(b.s3_path)) map.set(b.s3_path, b);
+    }
+    return [...map.values()];
+  },
+
   async fetchScanBundles() {
     this.isLoading = true;
     this.renderCurrentView();
@@ -27,6 +44,7 @@ window.AppState = {
     try {
       const url = getWebAppBackendUrl("/scan-bundles");
       const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
 
       if (data.status === "success") {
@@ -34,9 +52,16 @@ window.AppState = {
         this.periodoEjecucion = data.periodo_ejecucion || this.periodoEjecucion;
         this.criterioAntiguedad =
           data.criterio_antiguedad || this.criterioAntiguedad;
+      } else {
+        alert(
+          "Error al obtener versionamiento: respuesta inválida del backend",
+        );
       }
     } catch (error) {
       console.error("Error al obtener /scan-bundles:", error);
+      alert(
+        "No se pudo cargar el versionamiento (S3). Revise la conexión e intente de nuevo.",
+      );
     } finally {
       this.isLoading = false;
       this.renderMetrics();
@@ -51,13 +76,19 @@ window.AppState = {
     try {
       const url = getWebAppBackendUrl("/get-historical");
       const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
 
       if (data.status === "success") {
         this.historicBundles = data.bundles || [];
+      } else {
+        alert("Error al obtener histórico: respuesta inválida del backend");
       }
     } catch (error) {
       console.error("Error al obtener /get-historical:", error);
+      alert(
+        "No se pudo cargar el histórico. Revise la conexión e intente de nuevo.",
+      );
     } finally {
       this.isLoading = false;
       this.renderMetrics(); // Re-renderiza las métricas globales para asegurar coherencia
@@ -82,18 +113,15 @@ window.AppState = {
       : this.historicBundles;
   },
 
-  // MÉTRICAS SIEMPRE GLOBALES (Basadas en el escaneo completo de S3)
+  // MÉTRICAS SIEMPRE GLOBALES (unión S3 + histórico, dedup por s3_path)
   getMetrics() {
-    const s3List = this.scanBundles || [];
+    const all = this.getUnionBundles();
 
-    const totalMB = s3List.reduce(
-      (acc, b) => acc + (parseFloat(b.size_mb) || 0),
-      0,
-    );
+    const totalMB = all.reduce((acc, b) => acc + this.getBundleSize(b), 0);
 
-    const espacioALiberar = s3List
+    const espacioALiberar = all
       .filter((b) => b.estado === "Descartado")
-      .reduce((acc, b) => acc + (parseFloat(b.size_mb) || 0), 0);
+      .reduce((acc, b) => acc + this.getBundleSize(b), 0);
 
     const espacioResultante = Math.max(0, totalMB - espacioALiberar);
 
@@ -104,23 +132,18 @@ window.AppState = {
     };
   },
 
-  // CAMBIO DE ESTATUS SINCRONIZADO
+  // CAMBIO DE ESTATUS: actualiza cada listado en su propio array (sin
+  // inyectar copias cruzadas). S3 es case-sensitive: no usar toLowerCase().
   toggleStatus(s3_path) {
     if (!s3_path) return;
 
-    // Función auxiliar para limpiar y estandarizar rutas S3
-    const normalizePath = (path) =>
-      (path || "").trim().toLowerCase().replace(/\/+$/, "");
-
+    const normalizePath = (path) => (path || "").trim().replace(/\/+$/, "");
     const targetPath = normalizePath(s3_path);
 
-    // 1. Buscar en el listado activo de S3 (scanBundles)
-    let scanItem = this.scanBundles.find(
+    const scanItem = (this.scanBundles || []).find(
       (b) => normalizePath(b.s3_path) === targetPath,
     );
-
-    // 2. Buscar en el listado de Histórico
-    let historicItem = this.historicBundles.find(
+    const historicItem = (this.historicBundles || []).find(
       (b) => normalizePath(b.s3_path) === targetPath,
     );
 
@@ -129,20 +152,8 @@ window.AppState = {
     const newStatus =
       currentStatus === "Conservado" ? "Descartado" : "Conservado";
 
-    // 3. Si existe en scanBundles, actualizarlo
-    if (scanItem) {
-      scanItem.estado = newStatus;
-    }
-    // Si no existía en scanBundles pero sí en historicBundles, sincronizarlo al listado global
-    else if (historicItem) {
-      scanItem = { ...historicItem, estado: newStatus };
-      this.scanBundles.push(scanItem);
-    }
-
-    // 4. Actualizar el estado en el listado de la vista Histórico
-    if (historicItem) {
-      historicItem.estado = newStatus;
-    }
+    if (scanItem) scanItem.estado = newStatus;
+    if (historicItem) historicItem.estado = newStatus;
 
     // 5. Recalcular métricas globales y refrescar la interfaz
     this.renderMetrics();
@@ -202,6 +213,31 @@ window.AppState.renderCurrentView = function () {
 // ==========================================
 // VISTAS
 // ==========================================
+
+// Escape HTML para evitar XSS al interpolar datos de S3 en innerHTML.
+function escHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// Escape para atributo data-s3-path (comillas + HTML).
+function escAttr(value) {
+  return escHtml(value).replace(/'/g, "&#39;");
+}
+
+function statusBtnHtml(b) {
+  const estado = b.estado || "Conservado";
+  const cls = estado.toLowerCase();
+  const icon = estado === "Descartado" ? "✖" : "✔";
+  return `
+    <button class="status-toggle-btn ${cls}" data-s3-path="${escAttr(b.s3_path)}">
+        <span class="icon">${icon}</span>
+        <span>${escHtml(estado)}</span>
+    </button>`;
+}
 
 function renderNewFlowCleanup(bundles) {
   const newBundles = bundles.filter((b) => b.flow === "NEW");
@@ -264,15 +300,10 @@ function renderNewFlowHistoric(bundles, selectedEnv) {
                       .map(
                         (b) => `
                         <tr>
-                            <td>${b.nickname || "N/A"}</td>
-                            <td>${b.proyecto}</td>
-                            <td>${b.filename || b.s3_path}</td>
-                            <td>
-                                <button class="status-toggle-btn ${(b.estado || "Conservado").toLowerCase()}" onclick="AppState.toggleStatus('${b.s3_path}')">
-                                    <span class="icon">${b.estado === "Descartado" ? "✖" : "✔"}</span>
-                                    <span>${b.estado || "Conservado"}</span>
-                                </button>
-                            </td>
+                            <td>${escHtml(b.nickname || "N/A")}</td>
+                            <td>${escHtml(b.proyecto)}</td>
+                            <td>${escHtml(b.filename || b.s3_path)}</td>
+                            <td>${statusBtnHtml(b)}</td>
                         </tr>
                     `,
                       )
@@ -306,14 +337,9 @@ function renderLegacyCleanup(bundles) {
                       .map(
                         (b) => `
                         <tr>
-                            <td>${b.proyecto}</td>
-                            <td>${b.s3_path}</td>
-                            <td>
-                                <button class="status-toggle-btn ${b.estado.toLowerCase()}" onclick="AppState.toggleStatus('${b.s3_path}')">
-                                    <span class="icon">${b.estado === "Conservado" ? "✔" : "✖"}</span>
-                                    <span>${b.estado}</span>
-                                </button>
-                            </td>
+                            <td>${escHtml(b.proyecto)}</td>
+                            <td title="${escAttr(b.s3_path)}">${escHtml(b.filename || b.s3_path)}</td>
+                            <td>${statusBtnHtml(b)}</td>
                         </tr>
                     `,
                       )
@@ -347,14 +373,9 @@ function renderLegacyHistoric(bundles) {
                       .map(
                         (b) => `
                         <tr>
-                            <td>${b.proyecto}</td>
-                            <td>${b.s3_path}</td>
-                            <td>
-                                <button class="status-toggle-btn ${b.estado.toLowerCase()}" onclick="AppState.toggleStatus('${b.s3_path}')">
-                                    <span class="icon">${b.estado === "Conservado" ? "✔" : "✖"}</span>
-                                    <span>${b.estado}</span>
-                                </button>
-                            </td>
+                            <td>${escHtml(b.proyecto)}</td>
+                            <td title="${escAttr(b.s3_path)}">${escHtml(b.filename || b.s3_path)}</td>
+                            <td>${statusBtnHtml(b)}</td>
                         </tr>
                     `,
                       )
@@ -370,35 +391,37 @@ function renderProjectGroups(items) {
     return `<p style="text-align:center; color: #64748b; padding: 20px;">Sin versionamientos detectados</p>`;
   }
 
+  // Vista 1 §5: agrupar por Servidor/Nickname; mismo proyecto bajo
+  // distintos nicknames = tarjetas independientes.
   const grouped = {};
   items.forEach((item) => {
-    if (!grouped[item.proyecto]) grouped[item.proyecto] = [];
-    grouped[item.proyecto].push(item);
+    const key = `${item.nickname || "N/A"}|||${item.proyecto}`;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(item);
   });
 
   return Object.keys(grouped)
-    .map(
-      (proj) => `
+    .sort()
+    .map((key) => {
+      const [nickname, proj] = key.split("|||");
+      return `
         <div class="project-box">
-            <span class="server-tag">${grouped[proj][0].nickname}</span>
+            <span class="server-tag">${escHtml(nickname)} · ${escHtml(proj)}</span>
             <div class="versions-list">
-                ${grouped[proj]
+                ${grouped[key]
                   .map(
                     (b) => `
                     <div class="version-row">
-                        <span class="version-name">${b.proyecto}/${b.filename}</span>
-                        <button class="status-toggle-btn ${b.estado.toLowerCase()}" onclick="AppState.toggleStatus('${b.s3_path}')">
-                            <span class="icon">${b.estado === "Conservado" ? "✔" : "✖"}</span>
-                            <span>${b.estado}</span>
-                        </button>
+                        <span class="version-name" title="${escAttr(b.s3_path)}">${escHtml(b.proyecto)}/${escHtml(b.filename)}</span>
+                        ${statusBtnHtml(b)}
                     </div>
                 `,
                   )
                   .join("")}
             </div>
         </div>
-    `,
-    )
+    `;
+    })
     .join("");
 }
 
@@ -411,35 +434,72 @@ window.triggerAuthorize = async function () {
 
   try {
     const url = getWebAppBackendUrl("/authorize-cleanup");
+    // Enviar unión dedup scan + histórico para no perder registros (§6.2 incremental).
+    const payload = window.AppState.getUnionBundles();
+    if (payload.length === 0) {
+      alert("No hay bundles para autorizar");
+      return;
+    }
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bundles: window.AppState.scanBundles }),
+      body: JSON.stringify({ bundles: payload }),
     });
 
-    if (response.ok) {
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = `Reporte_Limpieza_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      alert("Limpieza ejecutada con éxito");
-      window.AppState.historicBundles = []; // Limpiar caché histórico para recargarlo cuando consulte
-      window.AppState.init();
+    if (!response.ok) {
+      let msg = `HTTP ${response.status}`;
+      try {
+        const err = await response.json();
+        if (err && err.message) msg = err.message;
+      } catch (_) {}
+      alert(`Error al procesar la autorización: ${msg}`);
+      return;
     }
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = `Reporte_Limpieza_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    alert(
+      "Limpieza ejecutada con éxito (revise la columna Estado del CSV para errores por item)",
+    );
+    window.AppState.historicBundles = []; // Limpiar caché histórico para recargarlo cuando consulte
+    await window.AppState.fetchScanBundles();
   } catch (error) {
+    console.error("Error en authorize:", error);
     alert("Error al procesar la autorización");
   }
 };
 
-window.triggerGlobalReport = function () {
-  const url = getWebAppBackendUrl("/global-report");
-  window.open(url, "_blank");
+window.triggerGlobalReport = async function () {
+  try {
+    const url = getWebAppBackendUrl("/global-report");
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    window.open(downloadUrl, "_blank");
+  } catch (error) {
+    console.error("Error en global-report:", error);
+    alert("No se pudo generar el reporte global");
+  }
 };
+
+// Delegación global: un solo listener para todos los botones de estado
+// (evita onclick inline con rutas S3 sin escapar).
+document.addEventListener("click", (e) => {
+  const btn =
+    e.target && e.target.closest
+      ? e.target.closest(".status-toggle-btn")
+      : null;
+  if (btn && btn.dataset && btn.dataset.s3Path) {
+    window.AppState.toggleStatus(btn.dataset.s3Path);
+  }
+});
 
 document.addEventListener("DOMContentLoaded", () => {
   window.AppState.init();

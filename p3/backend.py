@@ -1,31 +1,37 @@
-import os
-import re
 import csv
+import hashlib
 import io
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_file
 import dataiku
-from dataiku import pandasutils as pdu
 import pandas as pd
 
 # ==========================================
 # CONFIGURACIÓN Y CONSTANTES
+# NOTA: `app` lo provee la Standard WebApp de Dataiku (sección Python).
 # ==========================================
 S3_FOLDER_ID = "S3_Bundle_Backup_Path"
 HISTORICAL_DATASET_NAME = "historical"
-SIX_MONTHS_AGO = datetime.now() - timedelta(days=180)
 
-# Mapeo de servidores para New Flow
-NEW_FLOW_SERVERS = {
-    'sd-7u15-eilw': ('PROD-1', 'DKUF'),
-    'sd-mn7t-ccgf': ('PROD-1', 'RISP'),
-    'sd-yslj-ri55': ('PROD-1', 'SEGP'),
-    'sd-9r2x-8twu': ('UAT', 'BUAU'),
-    'sd-fkub-coxa': ('UAT', 'DKUU'),
-    'sd-2edj-g004': ('UAT', 'RISU'),
-    'sd-4c64-tuzr': ('UAT', 'SEGU'),
-    'sd-zqo7-s06c': ('UAT', 'DKUD')
-}
+# Esquema canónico del dataset 'historical' (PROJECT_REQUIREMENTS.md §4.3):
+# [id, s3_path, flow, proyecto, fecha_creacion_s3, fecha_periodo_limpieza, size]
+HISTORICAL_COLUMNS = [
+    "id", "s3_path", "flow", "proyecto",
+    "fecha_creacion_s3", "fecha_periodo_limpieza", "size",
+]
+
+VALID_ESTADOS = ("Conservado", "Descartado")
+
+
+def get_six_months_ago():
+    # Se calcula por request para no congelar el corte en el import.
+    # 180 días ≈ 6 meses por simplicidad.
+    return datetime.now() - timedelta(days=180)
+
+
+def md5_of_path(s3_path):
+    # §4.1: id = hash MD5 de la ruta S3 (estable entre reinicios).
+    return hashlib.md5(s3_path.encode("utf-8")).hexdigest()
 
 # ==========================================
 # FUNCIONES HELPER
@@ -110,20 +116,20 @@ def fetch_s3_bundles():
         creation_date = datetime.fromtimestamp(last_modified_ms / 1000.0)
 
         # Filtro por regla de 6 meses
-        if creation_date < SIX_MONTHS_AGO:
+        if creation_date < get_six_months_ago():
             size_mb = round(file_size_bytes / (1024 * 1024), 2)
 
-            # Formato estandarizado de salida
+            # Formato estandarizado de salida (§4.3: fecha_creacion_s3, size)
             bundles.append({
-                "id": str(hash(path)),
+                "id": md5_of_path(path),
                 "s3_path": path,
                 "flow": meta["flow"],
                 "env": meta["env"],
                 "nickname": meta["nickname"],
                 "proyecto": meta["proyecto"],
                 "filename": meta["filename"],
-                "fecha_creacion": creation_date.strftime("%Y-%m-%d %H:%M:%S"),
-                "size_mb": size_mb
+                "fecha_creacion_s3": creation_date.strftime("%Y-%m-%d %H:%M:%S"),
+                "size": size_mb
             })
 
     return bundles
@@ -155,33 +161,33 @@ def api_scan_bundles():
     s3_bundles = fetch_s3_bundles()
     historical = get_historical_records()
     historical_paths = {h["s3_path"] for h in historical if "s3_path" in h}
-    
-    # 1. Agrupar por (PROYECTO, AMBIENTE, FLOW)
+
+    # §4.1/§4.4: excluir de Vistas 1/3 todo bundle ya registrado en 'historical'.
+    candidates = [b for b in s3_bundles if b["s3_path"] not in historical_paths]
+
+    # Agrupar por (FLOW, AMBIENTE, NICKNAME, PROYECTO):
+    # proyectos con el mismo nombre bajo distintos nicknames son independientes (§1).
     groups = {}
-    for b in s3_bundles:
-        group_key = (b["proyecto"], b["env"], b["flow"])
+    for b in candidates:
+        group_key = (b["flow"], b["env"], b["nickname"], b["proyecto"])
         if group_key not in groups:
             groups[group_key] = []
         groups[group_key].append(b)
-        
+
     final_bundles = []
-    
+
     for group_key, items in groups.items():
-        # 2. ORDENAMIENTO FECHA/HORA REAL:
-        # Extraer la fecha/hora desde el nombre del archivo (ej. 2026-08-29_010007.zip)
-        # o usar la propiedad fecha_creacion
-        items.sort(key=lambda x: x["filename"], reverse=True)
-        
+        # Ordenar por fecha real de creación (lastModified); fallback a filename.
+        items.sort(
+            key=lambda x: (x.get("fecha_creacion_s3", ""), x.get("filename", "")),
+            reverse=True,
+        )
+
         for idx, item in enumerate(items):
-            # REGLA: Únicamente la versión más reciente (idx == 0) queda Conservado.
-            # Todo el resto (idx > 0) pasa a Descartado, ignorando si estaban en historical.
-            if idx == 0:
-                item["estado"] = "Conservado"
-            else:
-                item["estado"] = "Descartado"
-                
+            # REGLA: únicamente la versión más reciente (idx == 0) queda Conservado.
+            item["estado"] = "Conservado" if idx == 0 else "Descartado"
             final_bundles.append(item)
-            
+
     return jsonify({
         "status": "success",
         "bundles": final_bundles,
@@ -202,17 +208,20 @@ def api_get_historical():
         path = row.get("s3_path", "")
         meta = parse_s3_path(path) if path else None
 
+        # No defaultear flow a "NEW": si no se puede parsear, conservar el del dataset.
+        flow = row.get("flow", "") or (meta["flow"] if meta else "")
+
         final_bundles.append({
             "id": str(row.get("id", "")),
             "s3_path": path,
-            "flow": row.get("flow", meta["flow"] if meta else "NEW"),
+            "flow": flow,
             "env": meta["env"] if meta else "",
             "nickname": meta["nickname"] if meta else "",
             "proyecto": row.get("proyecto", ""),
             "filename": meta["filename"] if meta else "",
-            "fecha_creacion": str(row.get("fecha_creacion_s3", "")),
+            "fecha_creacion_s3": str(row.get("fecha_creacion_s3", "")),
             "fecha_periodo_limpieza": str(row.get("fecha_periodo_limpieza", "")),
-            "size_mb": row.get("size_mb", 0),
+            "size": row.get("size", 0),
             "estado": "Conservado"
         })
 
@@ -226,11 +235,24 @@ def api_get_historical():
 def api_authorize_cleanup():
     """
     Ejecutar la purga física en S3 de los marcados como 'Descartado',
-    actualizar el dataset 'historical' con los 'Conservado' y generar
-    el reporte CSV de cambios del período actual.
+    actualizar el dataset 'historical' de forma incremental
+    (inserta Conservado, borra Descartado) y generar el reporte CSV
+    del período actual: 7 campos §6.2 + columna Estado.
     """
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"status": "error", "message": "JSON inválido"}), 400
     items = data.get("bundles", [])
+    if not isinstance(items, list):
+        return jsonify({"status": "error", "message": "'bundles' debe ser una lista"}), 400
+
+    # Validar esquema ANTES de mutar S3 o el dataset (evita borrados parciales).
+    for b in items:
+        if not isinstance(b, dict) or not b.get("s3_path") or b.get("estado") not in VALID_ESTADOS:
+            return jsonify({
+                "status": "error",
+                "message": "Cada bundle requiere 's3_path' y estado Conservado/Descartado",
+            }), 400
 
     folder = dataiku.Folder(S3_FOLDER_ID)
     current_period = datetime.now().strftime("%Y-%m-%d")
@@ -238,46 +260,53 @@ def api_authorize_cleanup():
     to_delete = [b for b in items if b.get("estado") == "Descartado"]
     to_preserve = [b for b in items if b.get("estado") == "Conservado"]
 
-    # Borrado en S3
-    deleted_log = []
+    # Borrado en S3 con auditoría por item.
     for b in to_delete:
         try:
             folder.delete_path(b["s3_path"])
-            b["action"] = "ELIMINADO"
-            deleted_log.append(b)
+            b["Estado"] = "Eliminado"
         except Exception as e:
-            b["action"] = f"ERROR: {str(e)}"
-            deleted_log.append(b)
-
-    # Actualizar dataset 'historical'
-    historical_records = []
+            b["Estado"] = f"Error: {str(e)}"
     for b in to_preserve:
-        historical_records.append({
-            "id": b["id"],
-            "s3_path": b["s3_path"],
-            "flow": b["flow"],
-            "proyecto": b["proyecto"],
-            "fecha_creacion_s3": b["fecha_creacion"],
-            "fecha_periodo_limpieza": current_period,
-            "size_mb": b["size_mb"]
-        })
-    save_historical_records(historical_records)
+        b["Estado"] = "Conservado"
 
-    # Generar CSV del periodo actual
+    # Actualización incremental de 'historical': conservar lo existente
+    # salvo lo marcado Descartado, más los nuevos Conservado.
+    delete_paths = {b["s3_path"] for b in to_delete}
+    merged = {}
+    for row in get_historical_records():
+        sp = row.get("s3_path")
+        if sp and sp not in delete_paths:
+            merged[sp] = {k: row.get(k, "") for k in HISTORICAL_COLUMNS}
+    for b in to_preserve:
+        sp = b["s3_path"]
+        merged[sp] = {
+            "id": b.get("id") or md5_of_path(sp),
+            "s3_path": sp,
+            "flow": b.get("flow", ""),
+            "proyecto": b.get("proyecto", ""),
+            "fecha_creacion_s3": b.get("fecha_creacion_s3", b.get("fecha_creacion", "")),
+            "fecha_periodo_limpieza": current_period,
+            "size": b.get("size", b.get("size_mb", 0)),
+        }
+    save_historical_records([merged[k] for k in sorted(merged)])
+
+    # CSV del periodo: 7 campos §6.2 + Estado (audita delete_path).
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["id", "s3_path", "flow", "proyecto", "fecha_creacion", "estado", "size_mb", "fecha_periodo"])
+    writer = csv.DictWriter(output, fieldnames=HISTORICAL_COLUMNS + ["Estado"])
     writer.writeheader()
 
     for b in items:
+        sp = b["s3_path"]
         writer.writerow({
-            "id": b["id"],
-            "s3_path": b["s3_path"],
-            "flow": b["flow"],
-            "proyecto": b["proyecto"],
-            "fecha_creacion": b["fecha_creacion"],
-            "estado": b.get("estado"),
-            "size_mb": b["size_mb"],
-            "fecha_periodo": current_period
+            "id": b.get("id") or md5_of_path(sp),
+            "s3_path": sp,
+            "flow": b.get("flow", ""),
+            "proyecto": b.get("proyecto", ""),
+            "fecha_creacion_s3": b.get("fecha_creacion_s3", b.get("fecha_creacion", "")),
+            "fecha_periodo_limpieza": current_period,
+            "size": b.get("size", b.get("size_mb", 0)),
+            "Estado": b.get("Estado", b.get("estado", "")),
         })
 
     output.seek(0)
@@ -290,27 +319,41 @@ def api_authorize_cleanup():
 
 @app.route("/global-report", methods=["GET"])
 def api_global_report():
-    # Generar y descargar reporte CSV global del repositorio S3 y sus estados
+    # §6.3: cruzar S3 (> 6m) con 'historical'; CSV = 7 campos + Estado.
     s3_bundles = fetch_s3_bundles()
     historical = get_historical_records()
-    historical_paths = {h["s3_path"] for h in historical}
+    historical_by_path = {h["s3_path"]: h for h in historical if "s3_path" in h}
+    current_period = datetime.now().strftime("%Y-%m-%d")
 
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["id", "s3_path", "flow", "env", "proyecto", "fecha_creacion", "estado", "size_mb"])
+    writer = csv.DictWriter(output, fieldnames=HISTORICAL_COLUMNS + ["Estado"])
     writer.writeheader()
 
     for b in s3_bundles:
-        estado = "Preservado" if b["s3_path"] in historical_paths else "Descartado"
-        writer.writerow({
-            "id": b["id"],
-            "s3_path": b["s3_path"],
-            "flow": b["flow"],
-            "env": b["env"],
-            "proyecto": b["proyecto"],
-            "fecha_creacion": b["fecha_creacion"],
-            "estado": estado,
-            "size_mb": b["size_mb"]
-        })
+        sp = b["s3_path"]
+        if sp in historical_by_path:
+            h = historical_by_path[sp]
+            writer.writerow({
+                "id": h.get("id", b["id"]),
+                "s3_path": sp,
+                "flow": h.get("flow", b["flow"]),
+                "proyecto": h.get("proyecto", b["proyecto"]),
+                "fecha_creacion_s3": h.get("fecha_creacion_s3", b.get("fecha_creacion_s3", "")),
+                "fecha_periodo_limpieza": h.get("fecha_periodo_limpieza", ""),
+                "size": h.get("size", b.get("size", 0)),
+                "Estado": "Conservado",
+            })
+        else:
+            writer.writerow({
+                "id": b["id"],
+                "s3_path": sp,
+                "flow": b["flow"],
+                "proyecto": b["proyecto"],
+                "fecha_creacion_s3": b.get("fecha_creacion_s3", ""),
+                "fecha_periodo_limpieza": current_period,
+                "size": b.get("size", 0),
+                "Estado": "Próximo a eliminar",
+            })
 
     output.seek(0)
     return send_file(
