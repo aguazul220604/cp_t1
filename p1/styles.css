@@ -2,22 +2,22 @@
    VARIABLES Y ESTILOS GENERALES
    ========================================== */
 :root {
-  --bg-dark-teal: #0c3b4a;
-  --bg-header: #082d39;
-  --mint-panel: #bbf2e7;
+  --bg-dark-teal: #063c4d;
+  --bg-header: #0a3342;
+  --mint-panel: #bde9fa;
   --card-white: #ffffff;
   --text-dark: #0c3b4a;
   --text-muted: #4e6e78;
   --pill-project: #1d7b8a;
   --pill-project-hover: #155d69;
   --pill-project-active: #0c3b4a;
-  --btn-orange: #f25514;
+  --btn-orange: #ff5722;
   --btn-orange-hover: #d64307;
-  --btn-red: #ea001b;
+  --btn-red: #e74c3c;
   --btn-red-hover: #b80015;
   --btn-blue: #0066ff;
   --btn-blue-hover: #004ecc;
-  --btn-yellow: #fde01b;
+  --btn-yellow: #ffea00;
   --btn-yellow-hover: #e5c90d;
   --border-radius-card: 20px;
   --border-radius-pill: 25px;
@@ -134,7 +134,7 @@ body {
 }
 
 /* ==========================================
-   VISTA 1: ANÁLISIS DE MÉTRICAS (GRID 3 COLUMNAS)
+   VISTA 1: ANÁLISIS DE MÉTRICAS 
    ========================================== */
 .analysis-grid {
   display: grid;
@@ -352,7 +352,7 @@ body {
 }
 
 /* ==========================================
-   VISTA 2: REGISTRO DE INSTANCIAS (GRID 2 COLUMNAS)
+   VISTA 2: REGISTRO DE INSTANCIAS 
    ========================================== */
 .dashboard-grid {
   display: grid;

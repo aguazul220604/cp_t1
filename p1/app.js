@@ -1,10 +1,10 @@
-// Estado global en memoria
+// Estado global
 let listaInstancias = [];
 let estadoProyectos = [];
 let proyectoSeleccionadoActual = null;
 
 // ==========================================
-// 1. INICIALIZACIÓN
+// INICIALIZACIÓN
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
   cargarInstancias();
@@ -13,10 +13,10 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ==========================================
-// 2. REGISTRO DE EVENTOS NATIVO
+// REGISTRO DE EVENTOS
 // ==========================================
 function registrarEventos() {
-  // Menú desplegable Superior (Header)
+  // Menú (Header)
   const btnMenu = document.getElementById("btn-menu-principal");
   const dropdownContent = document.getElementById("dropdown-content");
 
@@ -31,7 +31,7 @@ function registrarEventos() {
     });
   }
 
-  // Navegación SPA mediante data-target
+  // Navegación SPA
   document.querySelectorAll(".nav-link").forEach((link) => {
     link.addEventListener("click", (e) => {
       e.preventDefault();
@@ -100,7 +100,7 @@ function registrarEventos() {
 }
 
 // ==========================================
-// 3. OBTENER Y POBLAR INSTANCIAS (FETCH)
+// OBTENER Y POBLAR INSTANCIAS
 // ==========================================
 async function cargarInstancias() {
   try {
@@ -134,7 +134,7 @@ function poblarSelectInstancias(instancias) {
 }
 
 // ==========================================
-// 4. MANTENIMIENTO DE INSTANCIAS (FETCH)
+// GESTIÓN DE INSTANCIAS
 // ==========================================
 async function guardarInstancia() {
   const nombre = document.getElementById("nombre-instancia").value.trim();
@@ -269,7 +269,7 @@ function limpiarFormulario() {
 }
 
 // ==========================================
-// 5. ANÁLISIS Y PROYECTOS INACTIVOS
+// ANÁLISIS Y PROYECTOS INACTIVOS
 // ==========================================
 async function cargarProyectosInactivos() {
   const listContainer = document.getElementById("sidebar-projects-list");
@@ -515,7 +515,7 @@ async function ejecutarLimpiezaCompleta() {
     }));
 
   if (proyectosALimpiar.length === 0) {
-    alert("No hay proyectos pendientes por limpiar. Todos están preservados.");
+    alert("No hay proyectos pendientes por limpiar");
     return;
   }
 

@@ -5,7 +5,7 @@ from flask import request, jsonify
 DATASET_NAME = "instances"
 
 # ==========================================
-# 1. OBTENER LISTA DE INSTANCIAS (GET)
+# OBTENER INSTANCIAS 
 # ==========================================
 @app.route("/obtener-instancias", methods=["GET"])
 def obtener_instancias():
@@ -13,11 +13,9 @@ def obtener_instancias():
         dataset = dataiku.Dataset(DATASET_NAME)
         df = dataset.get_dataframe()
 
-        # Si el dataset está vacío, devolver lista vacía
         if df.empty:
             return jsonify({"status": "ok", "instancias": []})
 
-        # Generar o asegurar un ID único para la tabla en JS si no existe
         if "id" not in df.columns:
             df["id"] = df.index + 1
 
@@ -28,7 +26,7 @@ def obtener_instancias():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==========================================
-# 2. REGISTRAR NUEVA INSTANCIA (POST)
+# REGISTRAR NUEVA INSTANCIA
 # ==========================================
 @app.route("/registrar-instancia", methods=["POST"])
 def registrar_instancia():
@@ -38,7 +36,7 @@ def registrar_instancia():
         url = data.get("url", "").strip()
         api_key = data.get("api_key", "").strip()
 
-        # Validación en Backend (Frame 3)
+        # Validación 
         if not nombre or not url or not api_key:
             return jsonify({
                 "status": "error", 
@@ -67,7 +65,7 @@ def registrar_instancia():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==========================================
-# 3. ELIMINAR INSTANCIA (POST/DELETE)
+# ELIMINAR INSTANCIA
 # ==========================================
 @app.route("/eliminar-instancia", methods=["POST"])
 def eliminar_instancia():
@@ -81,7 +79,7 @@ def eliminar_instancia():
         dataset = dataiku.Dataset(DATASET_NAME)
         df = dataset.get_dataframe()
 
-        # Filtrar removiendo el ID
+        # Filtrar 
         df_filtrado = df[df["id"] != int(instancia_id)]
 
         dataset.write_with_schema(df_filtrado)
@@ -92,8 +90,8 @@ def eliminar_instancia():
     
     
     
-    # ==========================================
-# 4. ACTUALIZAR INSTANCIA (POST)
+# ==========================================
+# ACTUALIZAR INSTANCIA
 # ==========================================
 @app.route("/actualizar-instancia", methods=["POST"])
 def actualizar_instancia():
@@ -117,7 +115,7 @@ def actualizar_instancia():
         if int(instancia_id) not in df["id"].values:
             return jsonify({"status": "error", "message": "Instancia no encontrada"}), 404
 
-        # Actualizar los valores en el DataFrame
+        # Actualizar los valores 
         idx = df.index[df["id"] == int(instancia_id)].tolist()[0]
         df.loc[idx, "nombre"] = nombre
         df.loc[idx, "url"] = url
@@ -130,7 +128,7 @@ def actualizar_instancia():
         return jsonify({"status": "error", "message": str(e)}), 500
     
 # ==========================================
-# 5. OBTENER PROYECTOS INACTIVOS (> 4 MESES)
+# OBTENER PROYECTOS INACTIVOS (> 4 MESES)
 # ==========================================
 @app.route("/obtener-proyectos-inactivos", methods=["GET"])
 def obtener_proyectos_inactivos():
@@ -159,7 +157,6 @@ def obtener_proyectos_inactivos():
                 proyectos = client.list_projects()
                 
                 for p in proyectos:
-                    # Usamos 'versionTag' basado en tu descubrimiento en el notebook
                     last_mod_ms = p.get('versionTag', {}).get('lastModifiedOn', 0)
                     if last_mod_ms > 0:
                         last_mod_date = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0)
@@ -170,7 +167,6 @@ def obtener_proyectos_inactivos():
                                 "nombre_proyecto": p.get('name', p['projectKey'])
                             })
             except Exception as ex_instancia:
-                # Este print es el que viste en tus logs
                 print(f"Error conectando a instancia {nombre}: {ex_instancia}")
             
             if proyectos_inactivos:
@@ -186,7 +182,7 @@ def obtener_proyectos_inactivos():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==========================================
-# 6. ANALIZAR PROYECTO (MÉTRICAS Y GRÁFICA REAL)
+# ANALIZAR PROYECTO (MÉTRICAS Y GRÁFICA)
 # ==========================================
 @app.route("/analizar-proyecto", methods=["POST"])
 def analizar_proyecto():
@@ -214,7 +210,7 @@ def analizar_proyecto():
         
         project = client.get_project(proyecto_id)
         
-        # Propietario (con fallback si viene None)
+        # Propietario
         owner_login = info_proyecto.get('ownerDisplayName') or info_proyecto.get('ownerLogin') or 'Sin propietario'
         
         # Última modificación
@@ -226,17 +222,16 @@ def analizar_proyecto():
         num_recipes = len(project.list_recipes())
         num_scenarios = len(project.list_scenarios())
         
-        # 2. EXTRAER HISTORIAL REAL DE ACTIVIDAD (JOBS Y COMMITS)
+        # 2. EXTRAER HISTORIAL DE ACTIVIDAD 
         actividad_por_mes = defaultdict(int)
         total_jobs_ejecutados = 0
         total_commits = 0
 
-        # A) Conteo y fechas de Jobs
+        # Conteo y fechas de Jobs
         try:
             jobs = project.list_jobs()
             total_jobs_ejecutados = len(jobs)
             for j in jobs:
-                # Timestamp de inicio del job
                 start_ms = j.get('def', {}).get('initiationTimestamp', 0) or j.get('startTime', 0)
                 if start_ms:
                     mes_str = datetime.datetime.fromtimestamp(start_ms / 1000.0).strftime('%Y-%m')
@@ -244,7 +239,7 @@ def analizar_proyecto():
         except Exception as e_jobs:
             print(f"No se pudieron obtener jobs: {e_jobs}")
 
-        # B) Conteo y fechas de Commits (Historial Git del Proyecto)
+        # Conteo y fechas de Commits 
         try:
             timeline = project.get_timeline()
             items = timeline.get('items', [])
@@ -257,21 +252,20 @@ def analizar_proyecto():
         except Exception as e_git:
             print(f"No se pudo obtener timeline/git: {e_git}")
 
-        # 3. CONSTRUIR EJE X (ÚLTIMOS 12 MESES) Y DETECTAR CORTE DE 4 MESES
         hoy = datetime.datetime.now()
         meses_eje = []
         actividad_eje = []
         
-        # Generar últimos 12 meses contiguos
+        # Generar últimos 12 meses 
         for i in range(11, -1, -1):
             fecha_mes = hoy - datetime.timedelta(days=i*30)
             clave_mes = fecha_mes.strftime('%Y-%m')
-            etiqueta_mes = fecha_mes.strftime('%b') # Ej: 'Ene', 'Feb'
+            etiqueta_mes = fecha_mes.strftime('%b') 
             
             meses_eje.append(etiqueta_mes)
             actividad_eje.append(actividad_por_mes.get(clave_mes, 0))
 
-        # Posición de la línea roja (hace 4 meses exactos en el eje)
+        # hace 4 meses exactos 
         idx_corte_4_meses = 11 - 4 
 
         # Métricas para la respuesta JSON
@@ -284,11 +278,11 @@ def analizar_proyecto():
             "commits": total_commits
         }
 
-        # 4. GENERAR GRÁFICAS CON MATPLOTLIB
+        # 4. GENERAR GRÁFICAS
         plt.close('all')
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.8), facecolor='white')
 
-        # --- Gráfica 1: Serie Temporal de Actividad ---
+        # Gráfica 1: Serie Temporal de Actividad
         ax1.plot(meses_eje, actividad_eje, color='#0044ff', linewidth=2, marker='o', markersize=4)
         ax1.axvline(x=idx_corte_4_meses, color='red', linestyle='--', linewidth=1.8, label='Umbral 4M')
         ax1.set_title('Nivel de Actividad (Histórico)', fontsize=10, fontweight='bold')
@@ -297,7 +291,7 @@ def analizar_proyecto():
         ax1.grid(True, linestyle=':', alpha=0.6)
         ax1.legend(loc='upper right', fontsize=7)
 
-        # --- Gráfica 2: Objetos en el Flujo ---
+        # Gráfica 2: Objetos en el Flujo
         clases = ['Datasets', 'Recetas', 'Escenarios']
         valores = [num_datasets, num_recipes, num_scenarios]
         ax2.barh(clases, valores, color='#0055ff', height=0.5)
@@ -324,7 +318,7 @@ def analizar_proyecto():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==========================================
-# 7. EJECUTAR LIMPIEZA / BORRADO DE PROYECTOS
+# EJECUTAR LIMPIEZA / BORRADO DE PROYECTOS
 # ==========================================
 @app.route("/ejecutar-limpieza", methods=["POST"])
 def ejecutar_limpieza():
