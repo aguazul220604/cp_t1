@@ -1457,8 +1457,8 @@
               <h2 id="titulo-proyecto-seleccionado">Seleccione un proyecto</h2>
             </div>
 
-            <!-- Contenedor para la Gráfica del Backend -->
-            <div class="charts-container text-center">
+            <!-- Panel central único: gráficas + métricas -->
+            <div class="dashboard-body text-center">
               <div id="mensaje-grafica-vacia">Esperando selección...</div>
               <div id="contenedor-grafica-backend" class="hidden">
                 <img
@@ -1468,10 +1468,7 @@
                   style="max-width: 100%; height: auto"
                 />
               </div>
-            </div>
 
-            <!-- Métricas en texto -->
-            <div class="metrics-container mt-3 text-center">
               <ul id="lista-metricas">
                 <li>Jobs ejecutados: <span id="metric-jobs">0</span></li>
                 <li>
@@ -1502,13 +1499,18 @@
             </div>
           </aside>
         </main>
-
-        <div class="action-bar text-center p-3">
-          <button id="btn-autorizar-cambios" class="btn btn-highlight btn-lg">
-            Conservar cambios y autorizar
-          </button>
-        </div>
       </div>
+
+      <!-- Footer fijo global: el botón aplica a todas las instancias -->
+      <footer class="global-footer">
+        <span class="global-footer-hint"
+          >Alcance global: preserva / elimina proyectos de todas las
+          instancias</span
+        >
+        <button id="btn-autorizar-cambios" class="btn btn-highlight btn-lg">
+          Conservar cambios y autorizar
+        </button>
+      </footer>
 
       <!-- ==========================================
          VISTA 2: REGISTRO DE INSTANCIAS 
