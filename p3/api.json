@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "test-dataiku-509020",
+  "private_key_id": "559ccf71234be03827c858d91650032f2d3ce22c",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDHlEZNvgiE7d88\nIt9V9D1btPaWXBSKjRQUFwdnAqgKzrDeKy/MDmQ4lrlUuWijDFVRD+TF4ZdVUyHa\nb0mNBsEWwsNltX4gBfOqtCpLHurQbqa6jCGTNU9Fffxoixv1pjagNDcKowZLlPG0\nS5HqSnSN1tlqZcMY9Fysx5mgBUU3Ye0OJeG1BL9wmAjXWbSMCkp1akArTEcsnkha\niPQTEQa4cPB6hMucdsatKQ++rObVtr7Jr85n+ZHChyJaZ4N7hN+mlysxorI7UwSt\nmWbRlA/OW6hZRbDQDhqRLlY0RShPQqbhCiSYvWMNfCyZwEE+WKY/LtPuETJGblQp\nSPN1JCypAgMBAAECggEADUhlSHHMG9rAB37TqeMUPVkFK1ssA8+hZTfmJnkzCWsZ\nsuOhbf2MNobzhTvExstAl2FNKs1ZltRuVZ0gAkqPic4DFq8WWpfC0JrmkLLZUm92\n2cYPSv6ajMe2h5ewj/AUxSNMgYD5n4ilcIgyCSuU58bDmBT3P98tltM++ns3UNjt\nssUa49QmuCZbUTq+zrz5Cru/U3K6hKzVhi6K1S+TM7MFIoKah5JU7m3Mra3bIsbc\ncKt4aa3t8FRYHfvtCvgcsTzMxUrFEgNU8M+zcFc7Jmx7UNKfJ8QKcqFNnHjg6bc9\nsho4aplUUPh8uJwjUzYxrvR/3gcTvP9vY6s8rhIhfQKBgQD0BKada+d5sZKqn9Wc\n5B3+eMAH6ydsIPxxi7ZY1sE93XmfgWvEX2pXQAy7UC6TKL3ZmK1AGRkDBGhykWcp\nOcLZoOdthzYBAR2GT6o/pWdCzetsJFUSdEdVIO77XrdH80Y9zVPTuidTNcv7O5Re\nHvw3tRPRN4mvLjkycJZt1JDwDQKBgQDRYQS824xurk3PhEvRubC1PTHLe5TExwek\ntpu6fYnhsgAsgkMBY2l2Q2G6EqNuW6tV7+G6Prd+3a34w50lkn6P7ZCEKCP7HmUJ\ncak8ciuClfaceSTMDo45PhSVYMW2xT25p9sV2b6MuLmdx/FYgC/nxhe7+QucvRP2\ncdV/I2zsDQKBgHUVvjSOz/SuZaeFJeQv+MxfeBTUmofhk/+PgCFEeliK6o7EdMc2\n2TmgO/usz4xA4keEYKz+3ed6t/sxFYTMeFggQqtlU15MALSviQsc/F0rnSi4jjFa\npdeNA96NZfgaHLwOx4gyLChbCdM0lU5MI80/D5E1ytTJoxw2tZdhhWIJAoGAe9tY\nYh+9wvt5K/imoTmnPo8klapVJtJVwyoClR8OIWSalbm4yWl1SXAyr0+3PeEcSYnN\njc7r3TBlaXLN0xwFoj517reQEUy5mAyUgB1Jf8YWTBmdmthBabs/kd3dF3E2Qkz5\nXMOh5LyhkKRmMGQj8odMIvX/2IhA9tf/42WhWUECgYEAtor7GNYq+xcC/tFK3C1A\nHxH/FECB5V4ZbuZWVxYXQYymq1+PxoUPWrsCtl5loZT6c4cd9BpWCyYD2fmJyvjY\nlth5OJn8T6q/vWIqLPGiGsi0op0X2ggRiqFO6vyyDoDGdp34/AT6nr7ThV9+FyD2\n7A0dky+YaeIMHj3m8sQCNJk=\n-----END PRIVATE KEY-----\n",
+  "client_email": "dataiku-test@test-dataiku-509020.iam.gserviceaccount.com",
+  "client_id": "112685603941344187264",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dataiku-test%40test-dataiku-509020.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
