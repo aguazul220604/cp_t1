@@ -72,10 +72,45 @@ function registrarEventos() {
     });
   });
 
-  // Botón Registrar Instancia
+  // Botón Registrar Instancia + submit con Enter
   const btnRegistrar = document.getElementById("btn-registrar");
   if (btnRegistrar) {
     btnRegistrar.addEventListener("click", guardarInstancia);
+  }
+  const formRegistro = document.getElementById("form-registro");
+  if (formRegistro) {
+    formRegistro.addEventListener("submit", (e) => {
+      e.preventDefault();
+      guardarInstancia();
+    });
+  }
+
+  // Delegación: tabla de instancias (Editar / Eliminar)
+  const tbody = document.getElementById("tabla-instancias-body");
+  if (tbody && !tbody.dataset.delegacionActiva) {
+    tbody.dataset.delegacionActiva = "1";
+    tbody.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-accion]");
+      if (!btn) return;
+      const id = btn.getAttribute("data-id");
+      if (btn.getAttribute("data-accion") === "editar") abrirModalEditar(id);
+      else if (btn.getAttribute("data-accion") === "eliminar")
+        eliminarInstancia(id);
+    });
+  }
+
+  // Delegación: lista de preservados (Revertir)
+  const listaPreservados = document.getElementById("lista-preservados");
+  if (listaPreservados && !listaPreservados.dataset.delegacionActiva) {
+    listaPreservados.dataset.delegacionActiva = "1";
+    listaPreservados.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-accion='revertir']");
+      if (!btn) return;
+      revertirProyecto(
+        btn.getAttribute("data-id-instancia"),
+        btn.getAttribute("data-id-proyecto"),
+      );
+    });
   }
 
   // Modal Edición
@@ -83,6 +118,17 @@ function registrarEventos() {
   if (btnCancelar) {
     btnCancelar.addEventListener("click", () => {
       document.getElementById("modal-editar").classList.add("hidden");
+    });
+  }
+
+  const modalEditar = document.getElementById("modal-editar");
+  if (modalEditar && !modalEditar.dataset.cierreActivo) {
+    modalEditar.dataset.cierreActivo = "1";
+    modalEditar.addEventListener("click", (e) => {
+      if (e.target === modalEditar) modalEditar.classList.add("hidden");
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") modalEditar.classList.add("hidden");
     });
   }
 
@@ -159,6 +205,11 @@ async function guardarInstancia() {
     return;
   }
 
+  const btn = document.getElementById("btn-registrar");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Registrando...";
+  }
   try {
     const response = await fetch(getWebAppBackendUrl("/registrar-instancia"), {
       method: "POST",
@@ -176,6 +227,12 @@ async function guardarInstancia() {
     }
   } catch (err) {
     console.error("Error al registrar instancia:", err);
+    alert("Ocurrió un error de conexión al registrar la instancia.");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Registrar";
+    }
   }
 }
 
@@ -266,8 +323,8 @@ function renderizarTabla(instancias) {
       <td>${escapeHtml(item.url)}</td>
       <td class="text-center">
         <div class="action-buttons">
-          <button class="btn btn-action btn-edit" onclick="abrirModalEditar('${escapeHtml(item.id)}')">Editar</button>
-          <button class="btn btn-action btn-delete" onclick="eliminarInstancia('${escapeHtml(item.id)}')">Eliminar</button>
+          <button class="btn btn-action btn-edit" data-accion="editar" data-id="${escapeHtml(item.id)}">Editar</button>
+          <button class="btn btn-action btn-delete" data-accion="eliminar" data-id="${escapeHtml(item.id)}">Eliminar</button>
         </div>
       </td>
     `;
@@ -479,17 +536,32 @@ async function cargarProyectosInactivos() {
     if (data.status === "ok") {
       estadoProyectos = [];
       (data.datos || []).forEach((instancia) => {
-        instancia.proyectos.forEach((proyecto) => {
+        (instancia.proyectos || []).forEach((proyecto) => {
           const clave = `${instancia.id_instancia}-${proyecto.id_proyecto}`;
           estadoProyectos.push({
             id_instancia: instancia.id_instancia,
             nombre_instancia: instancia.nombre_instancia,
             id_proyecto: proyecto.id_proyecto,
             nombre_proyecto: proyecto.nombre_proyecto,
+            ultima_modificacion:
+              proyecto.ultima_modificacion || proyecto.ultima_actividad || "",
+            months_since_last_modified:
+              proyecto.months_since_last_modified ??
+              proyecto.months_since_last_activity ??
+              null,
+            months_since_last_activity:
+              proyecto.months_since_last_activity ?? null,
+            decision: proyecto.decision || "Eliminar",
             preservado: preservadosPrevios.has(clave),
           });
         });
       });
+      // Ordenar por inactividad descendente para priorizar limpieza.
+      estadoProyectos.sort(
+        (a, b) =>
+          (b.months_since_last_activity ?? -1) -
+          (a.months_since_last_activity ?? -1),
+      );
 
       proyectoSeleccionadoActual = null;
       resetearDashboardCentral();
@@ -535,7 +607,18 @@ function renderizarPanelIzquierdo(idInstanciaFiltro) {
 
     const btn = document.createElement("button");
     btn.className = `btn-project ${esActivo}`;
-    btn.textContent = proyecto.nombre_proyecto;
+    const mesesTxt =
+      proyecto.months_since_last_activity === null ||
+      proyecto.months_since_last_activity === undefined
+        ? ""
+        : ` (${proyecto.months_since_last_activity}m)`;
+    btn.textContent = `${proyecto.nombre_proyecto}${mesesTxt}`;
+    if (
+      proyecto.months_since_last_activity !== null &&
+      proyecto.months_since_last_activity !== undefined
+    ) {
+      btn.title = `${proyecto.months_since_last_activity} meses sin actividad — ${proyecto.decision || ""}`;
+    }
     btn.onclick = () => {
       document
         .querySelectorAll(".btn-project")
@@ -574,7 +657,7 @@ function renderizarPanelPreservados() {
         <small class="preserved-item-instancia">${escapeHtml(p.nombre_instancia)}</small>
         <strong>${escapeHtml(p.nombre_proyecto)}</strong>
       </div>
-      <button class="btn btn-action btn-revertir" onclick="revertirProyecto('${escapeHtml(p.id_instancia)}', '${escapeHtml(p.id_proyecto)}')">
+      <button class="btn btn-action btn-revertir" data-accion="revertir" data-id-instancia="${escapeHtml(p.id_instancia)}" data-id-proyecto="${escapeHtml(p.id_proyecto)}">
         Revertir
       </button>
     `;
@@ -597,6 +680,10 @@ function resetearDashboardCentral() {
   document.getElementById("metric-last-mod").textContent = "-";
   document.getElementById("metric-users").textContent = "-";
   document.getElementById("metric-commits").textContent = "0";
+  const mMeses = document.getElementById("metric-meses");
+  if (mMeses) mMeses.textContent = "-";
+  const mDecision = document.getElementById("metric-decision");
+  if (mDecision) mDecision.textContent = "-";
   document.getElementById("btn-preservar-centro").classList.add("hidden");
 }
 
@@ -627,6 +714,10 @@ async function consultarMetricasProyecto(
   document.getElementById("metric-last-mod").textContent = "...";
   document.getElementById("metric-users").textContent = "...";
   document.getElementById("metric-commits").textContent = "...";
+  const mMesesLoading = document.getElementById("metric-meses");
+  if (mMesesLoading) mMesesLoading.textContent = "...";
+  const mDecisionLoading = document.getElementById("metric-decision");
+  if (mDecisionLoading) mDecisionLoading.textContent = "...";
 
   try {
     const response = await fetch(getWebAppBackendUrl("/analizar-proyecto"), {
@@ -649,6 +740,34 @@ async function consultarMetricasProyecto(
         m.ultima_modificacion;
       document.getElementById("metric-users").textContent = m.propietario;
       document.getElementById("metric-commits").textContent = m.commits;
+      const elMeses = document.getElementById("metric-meses");
+      if (elMeses) {
+        const detalleMod =
+          m.months_since_last_modified ?? m.months_since_last_activity;
+        elMeses.textContent =
+          `${m.months_since_last_activity ?? "-"} meses` +
+          (detalleMod !== undefined &&
+          detalleMod !== null &&
+          detalleMod !== m.months_since_last_activity
+            ? ` (mod: ${detalleMod}m)`
+            : "") +
+          (m.ultima_actividad ? ` · act: ${m.ultima_actividad}` : "");
+      }
+      const elDecision = document.getElementById("metric-decision");
+      if (elDecision) {
+        elDecision.textContent = `${m.decision ?? "-"} (umbral ≥${m.umbral_meses ?? 4}m)`;
+      }
+      // Refrescar lista izquierda con el valor refinado (jobs+timeline).
+      const actual = estadoProyectos.find(
+        (p) =>
+          String(p.id_instancia) === String(idInstancia) &&
+          String(p.id_proyecto) === String(idProyecto),
+      );
+      if (actual && m.months_since_last_activity !== undefined) {
+        actual.months_since_last_activity = m.months_since_last_activity;
+        actual.months_since_last_modified = m.months_since_last_modified;
+        actual.decision = m.decision;
+      }
     } else {
       msgGrafica.classList.remove("hidden");
       msgGrafica.textContent = "Error: " + data.message;
@@ -757,3 +876,11 @@ async function ejecutarLimpiezaCompleta() {
     alert("Ocurrió un error de conexión al ejecutar la limpieza.");
   }
 }
+
+// Exponer en window para compatibilidad con cualquier handler inline
+// heredado y para depuración desde consola en la WebApp Dataiku.
+window.abrirModalEditar = abrirModalEditar;
+window.eliminarInstancia = eliminarInstancia;
+window.revertirProyecto = revertirProyecto;
+window.preservarProyectoActual = preservarProyectoActual;
+window.guardarInstancia = guardarInstancia;

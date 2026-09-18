@@ -8,6 +8,42 @@ from flask import request, jsonify
 
 DATASET_NAME = "instances"
 
+# Umbral determinante: meses sin actividad a partir del cual
+# un proyecto es candidato a eliminación.
+UMBRAL_MESES_INACTIVIDAD = 4
+
+
+def months_between(fecha_pasada, fecha_ref=None):
+    """Meses calendario completos entre fecha_pasada y fecha_ref.
+
+    Ej: 2026-05-15 vs 2026-09-18 -> 4. Usa diferencia calendario
+    (anio*12+mes) menos 1 si el día de ref aún no alcanza el día base.
+    Devuelve 0 si fecha_pasada es futura o inválida.
+    """
+    if fecha_pasada is None:
+        return 0
+    ref = fecha_ref or datetime.datetime.now()
+    try:
+        meses = (ref.year - fecha_pasada.year) * 12 + (ref.month - fecha_pasada.month)
+        if ref.day < fecha_pasada.day:
+            meses -= 1
+        return max(0, meses)
+    except Exception:
+        return 0
+
+
+def _ms_to_datetime(ms):
+    try:
+        ms = int(ms or 0)
+    except Exception:
+        return None
+    if ms <= 0:
+        return None
+    try:
+        return datetime.datetime.fromtimestamp(ms / 1000.0)
+    except Exception:
+        return None
+
 # ==========================================
 # OBTENER INSTANCIAS
 # ==========================================
@@ -125,7 +161,7 @@ def actualizar_instancia():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==========================================
-# OBTENER PROYECTOS INACTIVOS (> 4 MESES)
+# OBTENER PROYECTOS INACTIVOS (>= 4 MESES calendario)
 # ==========================================
 @app.route("/obtener-proyectos-inactivos", methods=["GET"])
 def obtener_proyectos_inactivos():
@@ -137,7 +173,7 @@ def obtener_proyectos_inactivos():
             return jsonify({"status": "ok", "datos": []})
 
         datos_finales = []
-        fecha_limite = datetime.datetime.now() - datetime.timedelta(days=120)
+        hoy = datetime.datetime.now()
 
         for _, row in df_instancias.iterrows():
             id_instancia = row['id']
@@ -155,14 +191,26 @@ def obtener_proyectos_inactivos():
 
                 for p in proyectos:
                     last_mod_ms = p.get('versionTag', {}).get('lastModifiedOn', 0)
-                    if last_mod_ms > 0:
-                        last_mod_date = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0)
+                    last_mod_date = _ms_to_datetime(last_mod_ms)
+                    if last_mod_date is None:
+                        continue
 
-                        if last_mod_date < fecha_limite:
-                            proyectos_inactivos.append({
-                                "id_proyecto": p['projectKey'],
-                                "nombre_proyecto": p.get('name', p['projectKey'])
-                            })
+                    # Regla determinante: >= UMBRAL_MESES_INACTIVIDAD
+                    # meses calendario (no 120 días fijos).
+                    meses_inactivo = months_between(last_mod_date, hoy)
+
+                    if meses_inactivo >= UMBRAL_MESES_INACTIVIDAD:
+                        proyectos_inactivos.append({
+                            "id_proyecto": p['projectKey'],
+                            "nombre_proyecto": p.get('name', p['projectKey']),
+                            "ultima_modificacion": last_mod_date.strftime('%Y-%m-%d'),
+                            "months_since_last_modified": meses_inactivo,
+                            # Estimación preliminar con lastModifiedOn;
+                            # /analizar-proyecto refina con jobs+timeline.
+                            "months_since_last_activity": meses_inactivo,
+                            "fuente_actividad": "lastModifiedOn",
+                            "decision": "Eliminar"
+                        })
             except Exception as ex_instancia:
                 print(f"Error conectando a instancia {nombre}: {ex_instancia}")
 
@@ -173,7 +221,11 @@ def obtener_proyectos_inactivos():
                     "proyectos": proyectos_inactivos
                 })
 
-        return jsonify({"status": "ok", "datos": datos_finales})
+        return jsonify({
+            "status": "ok",
+            "datos": datos_finales,
+            "umbral_meses": UMBRAL_MESES_INACTIVIDAD
+        })
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -210,24 +262,30 @@ def analizar_proyecto():
         owner_login = info_proyecto.get('ownerDisplayName') or info_proyecto.get('ownerLogin') or 'Sin propietario'
 
         last_mod_ms = info_proyecto.get('versionTag', {}).get('lastModifiedOn', 0)
-        last_mod_str = datetime.datetime.fromtimestamp(last_mod_ms / 1000.0).strftime('%Y-%m-%d') if last_mod_ms else "-"
+        last_mod_date = _ms_to_datetime(last_mod_ms)
+        last_mod_str = last_mod_date.strftime('%Y-%m-%d') if last_mod_date else "-"
 
         num_datasets = len(project.list_datasets())
         num_recipes = len(project.list_recipes())
         num_scenarios = len(project.list_scenarios())
 
-        # 2. EXTRAER HISTORIAL DE ACTIVIDAD
+        # 2. EXTRAER HISTORIAL DE ACTIVIDAD (jobs + timeline)
         actividad_por_mes = defaultdict(int)
         total_jobs_ejecutados = 0
         total_commits = 0
+        ultima_fecha_jobs = None
+        ultima_fecha_commits = None
 
         try:
             jobs = project.list_jobs()
             total_jobs_ejecutados = len(jobs)
             for j in jobs:
                 start_ms = j.get('def', {}).get('initiationTimestamp', 0) or j.get('startTime', 0)
-                if start_ms:
-                    mes_str = datetime.datetime.fromtimestamp(start_ms / 1000.0).strftime('%Y-%m')
+                dt = _ms_to_datetime(start_ms)
+                if dt:
+                    if ultima_fecha_jobs is None or dt > ultima_fecha_jobs:
+                        ultima_fecha_jobs = dt
+                    mes_str = dt.strftime('%Y-%m')
                     actividad_por_mes[mes_str] += 1
         except Exception as e_jobs:
             print(f"No se pudieron obtener jobs: {e_jobs}")
@@ -238,13 +296,26 @@ def analizar_proyecto():
             total_commits = len(items)
             for item in items:
                 commit_ms = item.get('timestamp', 0)
-                if commit_ms:
-                    mes_str = datetime.datetime.fromtimestamp(commit_ms / 1000.0).strftime('%Y-%m')
+                dt = _ms_to_datetime(commit_ms)
+                if dt:
+                    if ultima_fecha_commits is None or dt > ultima_fecha_commits:
+                        ultima_fecha_commits = dt
+                    mes_str = dt.strftime('%Y-%m')
                     actividad_por_mes[mes_str] += 1
         except Exception as e_git:
             print(f"No se pudo obtener timeline/git: {e_git}")
 
         hoy = datetime.datetime.now()
+
+        # Ambas fuentes solicitadas:
+        # - lastModifiedOn (metadato barato del listado)
+        # - actividad real = max(lastModifiedOn, último job, último commit)
+        candidatos = [d for d in (last_mod_date, ultima_fecha_jobs, ultima_fecha_commits) if d]
+        fecha_ultima_actividad = max(candidatos) if candidatos else None
+        months_since_last_modified = months_between(last_mod_date, hoy)
+        months_since_last_activity = months_between(fecha_ultima_actividad, hoy)
+        decision = "Eliminar" if months_since_last_activity >= UMBRAL_MESES_INACTIVIDAD else "Preservar"
+
         meses_eje = []
         actividad_eje = []
 
@@ -256,12 +327,17 @@ def analizar_proyecto():
             meses_eje.append(etiqueta_mes)
             actividad_eje.append(actividad_por_mes.get(clave_mes, 0))
 
-        idx_corte_4_meses = 11 - 4
+        idx_corte_4_meses = 11 - UMBRAL_MESES_INACTIVIDAD
 
         metricas = {
             "jobs_ejecutados": total_jobs_ejecutados,
             "total_datasets": num_datasets,
             "ultima_modificacion": last_mod_str,
+            "ultima_actividad": fecha_ultima_actividad.strftime('%Y-%m-%d') if fecha_ultima_actividad else last_mod_str,
+            "months_since_last_modified": months_since_last_modified,
+            "months_since_last_activity": months_since_last_activity,
+            "umbral_meses": UMBRAL_MESES_INACTIVIDAD,
+            "decision": decision,
             "propietario": owner_login,
             "escenarios_ejecutados": num_scenarios,
             "commits": total_commits
