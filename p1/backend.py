@@ -10,7 +10,49 @@ DATASET_NAME = "instances"
 
 # Umbral determinante: meses sin actividad a partir del cual
 # un proyecto es candidato a eliminación.
+# Profundidad por defecto (limpieza base). El frontend puede pedir
+# una limpieza más profunda (umbral_min=1) y filtrar por buckets.
 UMBRAL_MESES_INACTIVIDAD = 4
+UMBRAL_MINIMO_PERMITIDO = 1
+
+
+def _parse_umbral(valor, defecto=UMBRAL_MESES_INACTIVIDAD):
+    """Valida un umbral en meses. Fallback a defecto si ausente/inválido."""
+    try:
+        v = int(valor)
+    except Exception:
+        return defecto
+    if 1 <= v <= 12:
+        return v
+    return defecto
+
+
+def clasificar_bucket(meses):
+    """Bucket de profundidad: 4 (>=4m, base oscura) .. 1 (>=1m, clara). 0 = fuera de alcance."""
+    try:
+        m = int(meses)
+    except Exception:
+        return 0
+    if m >= 4:
+        return 4
+    if m == 3:
+        return 3
+    if m == 2:
+        return 2
+    if m == 1:
+        return 1
+    return 0
+
+
+def niveles_activos(profundidad):
+    """Niveles acumulativos para una profundidad D: [4..D]. Ej D=2 -> [4,3,2]."""
+    try:
+        d = int(profundidad)
+    except Exception:
+        d = UMBRAL_MESES_INACTIVIDAD
+    if d <= 4:
+        return [u for u in (4, 3, 2, 1) if u >= d]
+    return [d]
 
 
 def months_between(fecha_pasada, fecha_ref=None):
@@ -161,16 +203,24 @@ def actualizar_instancia():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==========================================
-# OBTENER PROYECTOS INACTIVOS (>= 4 MESES calendario)
+# OBTENER PROYECTOS INACTIVOS (acumulativo por profundidad)
+# Por defecto devuelve >= umbral_min (1) con bucket por proyecto;
+# el frontend filtra localmente según la profundidad de cada instancia.
 # ==========================================
 @app.route("/obtener-proyectos-inactivos", methods=["GET"])
 def obtener_proyectos_inactivos():
     try:
+        umbral_min = _parse_umbral(
+            request.args.get("umbral_min", request.args.get("umbral_meses", 1)),
+            1,
+        )
+
         dataset = dataiku.Dataset(DATASET_NAME)
         df_instancias = dataset.get_dataframe()
 
         if df_instancias.empty:
-            return jsonify({"status": "ok", "datos": []})
+            return jsonify({"status": "ok", "datos": [], "umbral_min": umbral_min,
+                            "umbral_defecto": UMBRAL_MESES_INACTIVIDAD})
 
         datos_finales = []
         hoy = datetime.datetime.now()
@@ -195,11 +245,12 @@ def obtener_proyectos_inactivos():
                     if last_mod_date is None:
                         continue
 
-                    # Regla determinante: >= UMBRAL_MESES_INACTIVIDAD
-                    # meses calendario (no 120 días fijos).
+                    # Regla acumulativa: >= umbral_min meses calendario
+                    # (no días fijos). El bucket permite al frontend
+                    # colorear y filtrar por profundidad de cada instancia.
                     meses_inactivo = months_between(last_mod_date, hoy)
 
-                    if meses_inactivo >= UMBRAL_MESES_INACTIVIDAD:
+                    if meses_inactivo >= umbral_min:
                         proyectos_inactivos.append({
                             "id_proyecto": p['projectKey'],
                             "nombre_proyecto": p.get('name', p['projectKey']),
@@ -208,8 +259,9 @@ def obtener_proyectos_inactivos():
                             # Estimación preliminar con lastModifiedOn;
                             # /analizar-proyecto refina con jobs+timeline.
                             "months_since_last_activity": meses_inactivo,
+                            "bucket": clasificar_bucket(meses_inactivo),
                             "fuente_actividad": "lastModifiedOn",
-                            "decision": "Eliminar"
+                            "decision": "Eliminar" if meses_inactivo >= UMBRAL_MESES_INACTIVIDAD else "Revisar"
                         })
             except Exception as ex_instancia:
                 print(f"Error conectando a instancia {nombre}: {ex_instancia}")
@@ -224,7 +276,9 @@ def obtener_proyectos_inactivos():
         return jsonify({
             "status": "ok",
             "datos": datos_finales,
-            "umbral_meses": UMBRAL_MESES_INACTIVIDAD
+            "umbral_meses": UMBRAL_MESES_INACTIVIDAD,
+            "umbral_min": umbral_min,
+            "umbral_defecto": UMBRAL_MESES_INACTIVIDAD
         })
 
     except Exception as e:
@@ -239,6 +293,8 @@ def analizar_proyecto():
         data = request.get_json() or {}
         instancia_id = data.get("instancia_id")
         proyecto_id = data.get("proyecto_id")
+        # Profundidad de limpieza de esa instancia (4=base .. 1=profunda).
+        umbral = _parse_umbral(data.get("umbral_meses"), UMBRAL_MESES_INACTIVIDAD)
 
         dataset = dataiku.Dataset(DATASET_NAME)
         df = dataset.get_dataframe()
@@ -314,7 +370,8 @@ def analizar_proyecto():
         fecha_ultima_actividad = max(candidatos) if candidatos else None
         months_since_last_modified = months_between(last_mod_date, hoy)
         months_since_last_activity = months_between(fecha_ultima_actividad, hoy)
-        decision = "Eliminar" if months_since_last_activity >= UMBRAL_MESES_INACTIVIDAD else "Preservar"
+        bucket = clasificar_bucket(months_since_last_activity)
+        decision = "Eliminar" if months_since_last_activity >= umbral else "Preservar"
 
         meses_eje = []
         actividad_eje = []
@@ -327,7 +384,10 @@ def analizar_proyecto():
             meses_eje.append(etiqueta_mes)
             actividad_eje.append(actividad_por_mes.get(clave_mes, 0))
 
+        activos = niveles_activos(umbral)
+        cortes = [{"umbral": u, "idx": 11 - u} for u in activos]
         idx_corte_4_meses = 11 - UMBRAL_MESES_INACTIVIDAD
+        idx_corte_umbral = 11 - umbral
 
         metricas = {
             "jobs_ejecutados": total_jobs_ejecutados,
@@ -336,7 +396,9 @@ def analizar_proyecto():
             "ultima_actividad": fecha_ultima_actividad.strftime('%Y-%m-%d') if fecha_ultima_actividad else last_mod_str,
             "months_since_last_modified": months_since_last_modified,
             "months_since_last_activity": months_since_last_activity,
-            "umbral_meses": UMBRAL_MESES_INACTIVIDAD,
+            "bucket": bucket,
+            "umbral_meses": umbral,
+            "niveles_activos": activos,
             "decision": decision,
             "propietario": owner_login,
             "escenarios_ejecutados": num_scenarios,
@@ -347,7 +409,11 @@ def analizar_proyecto():
         actividad = {
             "meses": meses_eje,
             "valores": actividad_eje,
-            "corte_4_meses": idx_corte_4_meses
+            "corte_4_meses": idx_corte_4_meses,
+            "corte_umbral": idx_corte_umbral,
+            "cortes": cortes,
+            "umbral_meses": umbral,
+            "niveles_activos": activos
         }
 
         estructura = {

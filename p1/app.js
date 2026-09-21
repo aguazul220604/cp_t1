@@ -3,6 +3,43 @@ let listaInstancias = [];
 let estadoProyectos = [];
 let proyectoSeleccionadoActual = null;
 
+// Profundidad de limpieza por instancia (memoria independiente).
+// 4 = base (solo >=4m, oscuro) .. 1 = profunda (todo >=1m).
+const PROFUNDIDAD_DEFECTO = 4;
+let profundidadPorInstancia = {};
+
+function getProfundidad(idInstancia) {
+  if (idInstancia === null || idInstancia === undefined || idInstancia === "") {
+    return PROFUNDIDAD_DEFECTO;
+  }
+  const v = parseInt(profundidadPorInstancia[String(idInstancia)], 10);
+  return [1, 2, 3, 4].includes(v) ? v : PROFUNDIDAD_DEFECTO;
+}
+
+function bucketDe(meses) {
+  const m = parseInt(meses, 10);
+  if (Number.isNaN(m)) return 0;
+  if (m >= 4) return 4;
+  if (m === 3) return 3;
+  if (m === 2) return 2;
+  if (m === 1) return 1;
+  return 0;
+}
+
+function nivelesActivos(profundidad) {
+  const d = parseInt(profundidad, 10);
+  if (![1, 2, 3, 4].includes(d)) return [4];
+  return [4, 3, 2, 1].filter((u) => u >= d);
+}
+
+function enAlcance(proyecto) {
+  const meses =
+    proyecto.months_since_last_activity ??
+    proyecto.months_since_last_modified ??
+    0;
+  return meses >= getProfundidad(proyecto.id_instancia);
+}
+
 // ==========================================
 // UTILIDADES
 // ==========================================
@@ -137,11 +174,71 @@ function registrarEventos() {
     btnGuardarEdicion.addEventListener("click", guardarEdicionInstancia);
   }
 
-  // Filtro Select Instancias
+  // Filtro Select Instancias (sincroniza profundidad memorizada)
   const selectFiltro = document.getElementById("select-instancia-filtro");
   if (selectFiltro) {
     selectFiltro.addEventListener("change", (e) => {
-      renderizarPanelIzquierdo(e.target.value);
+      const idFiltro = e.target.value;
+      const selectUmbral = document.getElementById("select-umbral-tiempo");
+      if (selectUmbral && idFiltro) {
+        selectUmbral.value = String(getProfundidad(idFiltro));
+      } else if (selectUmbral && !idFiltro) {
+        selectUmbral.value = String(PROFUNDIDAD_DEFECTO);
+      }
+      renderizarPanelIzquierdo(idFiltro);
+    });
+  }
+
+  // Select Profundidad de limpieza (acumulativo, memoria por instancia)
+  const selectUmbral = document.getElementById("select-umbral-tiempo");
+  if (selectUmbral) {
+    selectUmbral.addEventListener("change", (e) => {
+      const nueva = parseInt(e.target.value, 10);
+      const profundidad = [1, 2, 3, 4].includes(nueva)
+        ? nueva
+        : PROFUNDIDAD_DEFECTO;
+      const idFiltro = document.getElementById(
+        "select-instancia-filtro",
+      )?.value;
+
+      if (idFiltro) {
+        // Solo afecta a la instancia filtrada (independencia).
+        profundidadPorInstancia[String(idFiltro)] = profundidad;
+      } else {
+        // Sin filtro ("Todas"): aplica a todas las instancias conocidas.
+        const ids = new Set(
+          estadoProyectos.map((p) => String(p.id_instancia)),
+        );
+        listaInstancias.forEach((i) => ids.add(String(i.id)));
+        ids.forEach((id) => {
+          profundidadPorInstancia[id] = profundidad;
+        });
+      }
+
+      renderizarPanelIzquierdo(idFiltro || "");
+      // Re-analizar el proyecto abierto para mover las líneas de umbral.
+      if (
+        proyectoSeleccionadoActual &&
+        (!idFiltro ||
+          String(proyectoSeleccionadoActual.id_instancia) ===
+            String(idFiltro))
+      ) {
+        const actual = estadoProyectos.find(
+          (p) =>
+            String(p.id_instancia) ===
+              String(proyectoSeleccionadoActual.id_instancia) &&
+            String(p.id_proyecto) ===
+              String(proyectoSeleccionadoActual.id_proyecto),
+        );
+        if (actual) {
+          consultarMetricasProyecto(
+            actual.id_instancia,
+            actual.id_proyecto,
+            actual.nombre_proyecto,
+            actual.nombre_instancia,
+          );
+        }
+      }
     });
   }
 
@@ -398,7 +495,40 @@ function inyectarEstilosGraficas() {
   estilosGraficasInyectados = true;
 }
 
-function construirSvgActividad(meses, valores, corteIdx) {
+const COLORES_UMBRAL = {
+  4: "#d90429",
+  3: "#f45d01",
+  2: "#f48c06",
+  1: "#e9b308",
+};
+
+function normalizarCortes(corteIdx, umbralOuCortes, profundidad) {
+  // Acepta: array [{umbral, idx}], número legacy, o nada (deriva de profundidad).
+  if (Array.isArray(umbralOuCortes) && umbralOuCortes.length > 0) {
+    return umbralOuCortes
+      .filter((c) => c && c.idx !== null && c.idx !== undefined)
+      .map((c) => ({
+        umbral: parseInt(c.umbral, 10) || 4,
+        idx: parseInt(c.idx, 10),
+      }))
+      .filter((c) => !Number.isNaN(c.idx));
+  }
+  if (Array.isArray(corteIdx) && corteIdx.length > 0) {
+    return normalizarCortes(null, corteIdx, profundidad);
+  }
+  if (typeof corteIdx === "number" && typeof umbralOuCortes === "number") {
+    return [{ umbral: umbralOuCortes, idx: corteIdx }];
+  }
+  if (typeof corteIdx === "number") {
+    return [{ umbral: 4, idx: corteIdx }];
+  }
+  const d = [1, 2, 3, 4].includes(parseInt(profundidad, 10))
+    ? parseInt(profundidad, 10)
+    : PROFUNDIDAD_DEFECTO;
+  return nivelesActivos(d).map((u) => ({ umbral: u, idx: 11 - u }));
+}
+
+function construirSvgActividad(meses, valores, corteIdx, umbralOuCortes, profundidad) {
   const ancho = 560;
   const alto = 200;
   const margenIzq = 30;
@@ -430,22 +560,26 @@ function construirSvgActividad(meses, valores, corteIdx) {
     })
     .join("");
 
-  const hayCorte =
-    corteIdx !== null &&
-    corteIdx !== undefined &&
-    corteIdx >= 0 &&
-    corteIdx < n;
-  const xCorte = hayCorte ? posX(corteIdx) : 0;
-  const lineaCorte = hayCorte
-    ? `<line x1="${xCorte}" y1="${margenSup}" x2="${xCorte}" y2="${alto - margenInf}" stroke="#ff3b3b" stroke-width="1.5" stroke-dasharray="4,3"></line>
-       <text x="${xCorte}" y="${margenSup - 4}" font-size="8" fill="#ff3b3b" text-anchor="middle">Umbral 4M</text>`
-    : "";
+  const cortes = normalizarCortes(corteIdx, umbralOuCortes, profundidad).filter(
+    (c) => c.idx >= 0 && c.idx < n,
+  );
+  // Dibujar primero los más profundos para que la base (>=4) quede al frente.
+  const ordenados = [...cortes].sort((a, b) => a.umbral - b.umbral);
+  const lineasCorte = ordenados
+    .map((c) => {
+      const x = posX(c.idx);
+      const color = COLORES_UMBRAL[c.umbral] || "#ff3b3b";
+      const esBase = c.umbral === 4;
+      return `<line x1="${x}" y1="${margenSup}" x2="${x}" y2="${alto - margenInf}" stroke="${color}" stroke-width="${esBase ? 2 : 1.5}" stroke-dasharray="4,3"></line>
+       <text x="${x}" y="${margenSup - 4}" font-size="8" fill="${color}" text-anchor="middle">Umbral ${c.umbral}M</text>`;
+    })
+    .join("");
 
   return `
     <svg class="grafica-actividad-svg" viewBox="0 0 ${ancho} ${alto}" xmlns="http://www.w3.org/2000/svg">
       <line x1="${margenIzq}" y1="${margenSup}" x2="${margenIzq}" y2="${alto - margenInf}" stroke="#ddd" stroke-width="1"></line>
       <line x1="${margenIzq}" y1="${alto - margenInf}" x2="${ancho - margenDer}" y2="${alto - margenInf}" stroke="#ddd" stroke-width="1"></line>
-      ${lineaCorte}
+      ${lineasCorte}
       <polyline points="${puntos}" fill="none" stroke="#0044ff" stroke-width="2"></polyline>
       ${circulos}
       ${etiquetasEje}
@@ -479,7 +613,7 @@ function construirHtmlEstructura(datasets, recetas, escenarios) {
   return `<div class="grafica-estructura-lista">${filas}</div>`;
 }
 
-function renderizarGraficasProyecto(actividad, estructura) {
+function renderizarGraficasProyecto(actividad, estructura, profundidad) {
   inyectarEstilosGraficas();
 
   const contenedor = document.getElementById("contenedor-grafica-backend");
@@ -496,10 +630,23 @@ function renderizarGraficasProyecto(actividad, estructura) {
     escenarios: 0,
   };
 
+  const prof = datosActividad.umbral_meses || profundidad || PROFUNDIDAD_DEFECTO;
+  const cortesEntrada = datosActividad.cortes
+    ? datosActividad.cortes
+    : datosActividad.corte_umbral !== undefined &&
+        datosActividad.corte_umbral !== null
+      ? [
+          {
+            umbral: prof,
+            idx: datosActividad.corte_umbral,
+          },
+        ]
+      : datosActividad.corte_4_meses;
+
   contenedor.innerHTML = `
     <div class="grafica-panel">
       <h4>Nivel de Actividad (Histórico)</h4>
-      ${construirSvgActividad(datosActividad.meses, datosActividad.valores, datosActividad.corte_4_meses)}
+      ${construirSvgActividad(datosActividad.meses, datosActividad.valores, cortesEntrada, null, prof)}
     </div>
     <div class="grafica-panel">
       <h4>Estructura del Proyecto</h4>
@@ -528,16 +675,26 @@ async function cargarProyectosInactivos() {
   );
 
   try {
+    // Traer el superset >=1m una sola vez; el filtro acumulativo por
+    // profundidad de cada instancia se aplica localmente (sin refetch).
     const response = await fetch(
-      getWebAppBackendUrl("/obtener-proyectos-inactivos"),
+      getWebAppBackendUrl("/obtener-proyectos-inactivos?umbral_min=1"),
     );
     const data = await response.json();
 
     if (data.status === "ok") {
       estadoProyectos = [];
       (data.datos || []).forEach((instancia) => {
+        if (profundidadPorInstancia[String(instancia.id_instancia)] === undefined) {
+          profundidadPorInstancia[String(instancia.id_instancia)] =
+            PROFUNDIDAD_DEFECTO;
+        }
         (instancia.proyectos || []).forEach((proyecto) => {
           const clave = `${instancia.id_instancia}-${proyecto.id_proyecto}`;
+          const meses =
+            proyecto.months_since_last_activity ??
+            proyecto.months_since_last_modified ??
+            null;
           estadoProyectos.push({
             id_instancia: instancia.id_instancia,
             nombre_instancia: instancia.nombre_instancia,
@@ -549,8 +706,11 @@ async function cargarProyectosInactivos() {
               proyecto.months_since_last_modified ??
               proyecto.months_since_last_activity ??
               null,
-            months_since_last_activity:
-              proyecto.months_since_last_activity ?? null,
+            months_since_last_activity: meses,
+            bucket:
+              proyecto.bucket !== undefined && proyecto.bucket !== null
+                ? proyecto.bucket
+                : bucketDe(meses),
             decision: proyecto.decision || "Eliminar",
             preservado: preservadosPrevios.has(clave),
           });
@@ -583,7 +743,9 @@ function renderizarPanelIzquierdo(idInstanciaFiltro) {
   if (!listContainer) return;
   listContainer.innerHTML = "";
 
-  let activos = estadoProyectos.filter((p) => !p.preservado);
+  // Solo proyectos en alcance de la profundidad de su instancia.
+  // Fuera de alcance = preservación implícita (no listados, no limpiados).
+  let activos = estadoProyectos.filter((p) => !p.preservado && enAlcance(p));
 
   if (idInstanciaFiltro) {
     activos = activos.filter(
@@ -605,8 +767,9 @@ function renderizarPanelIzquierdo(idInstanciaFiltro) {
         ? "active"
         : "";
 
+    const bucket = proyecto.bucket ?? bucketDe(proyecto.months_since_last_activity);
     const btn = document.createElement("button");
-    btn.className = `btn-project ${esActivo}`;
+    btn.className = `btn-project umbral-${bucket} ${esActivo}`;
     const mesesTxt =
       proyecto.months_since_last_activity === null ||
       proyecto.months_since_last_activity === undefined
@@ -617,7 +780,7 @@ function renderizarPanelIzquierdo(idInstanciaFiltro) {
       proyecto.months_since_last_activity !== null &&
       proyecto.months_since_last_activity !== undefined
     ) {
-      btn.title = `${proyecto.months_since_last_activity} meses sin actividad — ${proyecto.decision || ""}`;
+      btn.title = `${proyecto.months_since_last_activity} meses sin actividad — nivel ≥${bucket}m — ${proyecto.decision || ""}`;
     }
     btn.onclick = () => {
       document
@@ -720,19 +883,25 @@ async function consultarMetricasProyecto(
   if (mDecisionLoading) mDecisionLoading.textContent = "...";
 
   try {
+    const profundidad = getProfundidad(idInstancia);
     const response = await fetch(getWebAppBackendUrl("/analizar-proyecto"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         instancia_id: idInstancia,
         proyecto_id: idProyecto,
+        umbral_meses: profundidad,
       }),
     });
     const data = await response.json();
 
     if (data.status === "ok") {
       msgGrafica.classList.add("hidden");
-      renderizarGraficasProyecto(data.actividad, data.estructura);
+      renderizarGraficasProyecto(
+        data.actividad,
+        data.estructura,
+        data.metricas?.umbral_meses ?? profundidad,
+      );
 
       const m = data.metricas;
       document.getElementById("metric-jobs").textContent = m.jobs_ejecutados;
@@ -755,7 +924,10 @@ async function consultarMetricasProyecto(
       }
       const elDecision = document.getElementById("metric-decision");
       if (elDecision) {
-        elDecision.textContent = `${m.decision ?? "-"} (umbral ≥${m.umbral_meses ?? 4}m)`;
+        const prof = m.umbral_meses ?? getProfundidad(idInstancia);
+        const niveles = (m.niveles_activos || nivelesActivos(prof)).join(",");
+        elDecision.textContent =
+          `${m.decision ?? "-"} (profundidad ≥${prof}m · niveles ${niveles})`;
       }
       // Refrescar lista izquierda con el valor refinado (jobs+timeline).
       const actual = estadoProyectos.find(
@@ -766,6 +938,10 @@ async function consultarMetricasProyecto(
       if (actual && m.months_since_last_activity !== undefined) {
         actual.months_since_last_activity = m.months_since_last_activity;
         actual.months_since_last_modified = m.months_since_last_modified;
+        actual.bucket =
+          m.bucket !== undefined && m.bucket !== null
+            ? m.bucket
+            : bucketDe(m.months_since_last_activity);
         actual.decision = m.decision;
       }
     } else {
@@ -816,21 +992,36 @@ function revertirProyecto(idInstancia, idProyecto) {
 }
 
 async function ejecutarLimpiezaCompleta() {
-  const proyectosALimpiar = estadoProyectos
-    .filter((p) => !p.preservado)
-    .map((p) => ({
-      instancia_id: p.id_instancia,
-      proyecto_id: p.id_proyecto,
-    }));
+  // Alcance = no preservados explícitamente + dentro de la profundidad
+  // de su instancia. Fuera de alcance = preservación implícita (intactos).
+  const enAlcanceList = estadoProyectos.filter(
+    (p) => !p.preservado && enAlcance(p),
+  );
+  const proyectosALimpiar = enAlcanceList.map((p) => ({
+    instancia_id: p.id_instancia,
+    proyecto_id: p.id_proyecto,
+  }));
 
   if (proyectosALimpiar.length === 0) {
     alert("No hay proyectos pendientes por limpiar");
     return;
   }
 
+  const desglose = [4, 3, 2, 1]
+    .map((b) => {
+      const n = enAlcanceList.filter(
+        (p) => (p.bucket ?? bucketDe(p.months_since_last_activity)) === b,
+      ).length;
+      return n > 0 ? `${n} en ≥${b}m` : null;
+    })
+    .filter(Boolean)
+    .join(" + ");
+
   const confirmacion = confirm(
-    `Está a punto de eliminar ${proyectosALimpiar.length} proyecto(s) de forma permanente.\n` +
-      `Los proyectos preservados NO serán afectados.\n¿Desea continuar?`,
+    `Está a punto de eliminar ${proyectosALimpiar.length} proyecto(s) de forma permanente` +
+      (desglose ? ` (${desglose})` : "") +
+      `.\n` +
+      `Los proyectos preservados y los fuera de la profundidad seleccionada NO serán afectados.\n¿Desea continuar?`,
   );
   if (!confirmacion) return;
 

@@ -1439,6 +1439,15 @@
           <!-- Columna 1: Filtro de Instancias y Lista de Proyectos -->
           <aside class="sidebar-projects scrollable-panel">
             <div class="filter-container mb-3">
+              <label for="select-umbral-tiempo" class="filter-label"
+                >Profundidad de limpieza</label
+              >
+              <select id="select-umbral-tiempo" class="btn-select-pill">
+                <option value="4" selected>≥ 4 meses (base)</option>
+                <option value="3">≥ 3 meses</option>
+                <option value="2">≥ 2 meses</option>
+                <option value="1">≥ 1 mes (profunda)</option>
+              </select>
               <select id="select-instancia-filtro" class="btn-select-pill">
                 <option value="">Seleccionar instancia</option>
               </select>
