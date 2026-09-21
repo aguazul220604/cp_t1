@@ -137,6 +137,10 @@ body {
    VISTA 1: ANÁLISIS DE MÉTRICAS 
    ========================================== */
 .app-container {
+  padding-bottom: 0;
+}
+
+#view-analisis {
   padding-bottom: 84px;
 }
 

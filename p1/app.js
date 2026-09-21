@@ -101,6 +101,11 @@ function registrarEventos() {
       const targetElement = document.getElementById(targetView);
       if (targetElement) targetElement.classList.remove("hidden");
 
+      // Footer "Conservar cambios y autorizar" solo en Gestión de Instancias.
+      document
+        .getElementById("global-footer")
+        ?.classList.toggle("hidden", targetView !== "view-analisis");
+
       if (targetView === "view-analisis") {
         cargarProyectosInactivos();
       } else if (targetView === "view-registro") {
@@ -206,9 +211,7 @@ function registrarEventos() {
         profundidadPorInstancia[String(idFiltro)] = profundidad;
       } else {
         // Sin filtro ("Todas"): aplica a todas las instancias conocidas.
-        const ids = new Set(
-          estadoProyectos.map((p) => String(p.id_instancia)),
-        );
+        const ids = new Set(estadoProyectos.map((p) => String(p.id_instancia)));
         listaInstancias.forEach((i) => ids.add(String(i.id)));
         ids.forEach((id) => {
           profundidadPorInstancia[id] = profundidad;
@@ -220,8 +223,7 @@ function registrarEventos() {
       if (
         proyectoSeleccionadoActual &&
         (!idFiltro ||
-          String(proyectoSeleccionadoActual.id_instancia) ===
-            String(idFiltro))
+          String(proyectoSeleccionadoActual.id_instancia) === String(idFiltro))
       ) {
         const actual = estadoProyectos.find(
           (p) =>
@@ -528,7 +530,13 @@ function normalizarCortes(corteIdx, umbralOuCortes, profundidad) {
   return nivelesActivos(d).map((u) => ({ umbral: u, idx: 11 - u }));
 }
 
-function construirSvgActividad(meses, valores, corteIdx, umbralOuCortes, profundidad) {
+function construirSvgActividad(
+  meses,
+  valores,
+  corteIdx,
+  umbralOuCortes,
+  profundidad,
+) {
   const ancho = 560;
   const alto = 200;
   const margenIzq = 30;
@@ -630,7 +638,8 @@ function renderizarGraficasProyecto(actividad, estructura, profundidad) {
     escenarios: 0,
   };
 
-  const prof = datosActividad.umbral_meses || profundidad || PROFUNDIDAD_DEFECTO;
+  const prof =
+    datosActividad.umbral_meses || profundidad || PROFUNDIDAD_DEFECTO;
   const cortesEntrada = datosActividad.cortes
     ? datosActividad.cortes
     : datosActividad.corte_umbral !== undefined &&
@@ -685,7 +694,9 @@ async function cargarProyectosInactivos() {
     if (data.status === "ok") {
       estadoProyectos = [];
       (data.datos || []).forEach((instancia) => {
-        if (profundidadPorInstancia[String(instancia.id_instancia)] === undefined) {
+        if (
+          profundidadPorInstancia[String(instancia.id_instancia)] === undefined
+        ) {
           profundidadPorInstancia[String(instancia.id_instancia)] =
             PROFUNDIDAD_DEFECTO;
         }
@@ -767,7 +778,8 @@ function renderizarPanelIzquierdo(idInstanciaFiltro) {
         ? "active"
         : "";
 
-    const bucket = proyecto.bucket ?? bucketDe(proyecto.months_since_last_activity);
+    const bucket =
+      proyecto.bucket ?? bucketDe(proyecto.months_since_last_activity);
     const btn = document.createElement("button");
     btn.className = `btn-project umbral-${bucket} ${esActivo}`;
     const mesesTxt =
@@ -926,8 +938,7 @@ async function consultarMetricasProyecto(
       if (elDecision) {
         const prof = m.umbral_meses ?? getProfundidad(idInstancia);
         const niveles = (m.niveles_activos || nivelesActivos(prof)).join(",");
-        elDecision.textContent =
-          `${m.decision ?? "-"} (profundidad ≥${prof}m · niveles ${niveles})`;
+        elDecision.textContent = `${m.decision ?? "-"} (profundidad ≥${prof}m · niveles ${niveles})`;
       }
       // Refrescar lista izquierda con el valor refinado (jobs+timeline).
       const actual = estadoProyectos.find(
