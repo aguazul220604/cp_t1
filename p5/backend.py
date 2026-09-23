@@ -90,10 +90,55 @@ def _ms_to_datetime(ms):
     except Exception:
         return None
 
+def _fmt_fecha(dt):
+    try:
+        return dt.strftime('%Y-%m-%d') if dt else "-"
+    except Exception:
+        return "-"
+
+
+def _ultima_mod_desde_timeline(project, fallback_date):
+    """Ultima modificacion = ultimo commit del timeline.
+
+    Fallback a versionTag.lastModifiedOn solo si el timeline esta
+    vacio o no se puede obtener.
+    """
+    try:
+        items = (project.get_timeline() or {}).get('items', [])
+        ultima = None
+        for item in items:
+            dt = _ms_to_datetime(item.get('timestamp', 0))
+            if dt and (ultima is None or dt > ultima):
+                ultima = dt
+        if ultima is not None:
+            return ultima
+    except Exception as e_git:
+        print(f"No se pudo obtener timeline: {e_git}")
+    return fallback_date
+
+
+def _ultima_ejec_desde_jobs(project):
+    """Ultima ejecucion = ultimo job ejecutado (mas reciente).
+
+    Devuelve None si el proyecto nunca se ejecuto.
+    """
+    ultima = None
+    try:
+        for j in project.list_jobs():
+            start_ms = j.get('def', {}).get('initiationTimestamp', 0) or j.get('startTime', 0)
+            dt = _ms_to_datetime(start_ms)
+            if dt and (ultima is None or dt > ultima):
+                ultima = dt
+    except Exception as e_jobs:
+        print(f"No se pudieron obtener jobs: {e_jobs}")
+    return ultima
+
 # ==========================================
 # OBTENER PROYECTOS INACTIVOS (instancia actual, filtro exacto)
-# Devuelve SOLO proyectos con Decision == Eliminar según la
-# actividad real (max lastModifiedOn, último job, último commit).
+# Devuelve SOLO proyectos con Decision == Eliminar segun
+# max(ultima modificacion = ultimo commit, ultima ejecucion = ultimo job).
+# Sin jobs -> candidato solo en profundidad >=1 mes (umbral == 1),
+# sin importar su antiguedad (supuesto de negocio confirmado).
 # Los meses sin actividad son criterio interno, no se exponen.
 # ==========================================
 @app.route("/obtener-proyectos-inactivos", methods=["GET"])
@@ -115,56 +160,53 @@ def obtener_proyectos_inactivos():
 
             for p in proyectos:
                 last_mod_ms = p.get('versionTag', {}).get('lastModifiedOn', 0)
-                last_mod_date = _ms_to_datetime(last_mod_ms)
-                if last_mod_date is None:
-                    continue
-
-                # Prefiltro barato: si ni lastModifiedOn alcanza el umbral,
-                # tampoco lo hará la actividad real (max >= lastModifiedOn
-                # solo puede ser más reciente, nunca más antigua).
-                # Ojo: esto descarta rápido, pero la decisión final
-                # siempre se confirma con jobs+timeline.
-                if months_between(last_mod_date, hoy) < umbral:
-                    continue
+                fallback_date = _ms_to_datetime(last_mod_ms)
 
                 try:
                     project = client.get_project(p['projectKey'])
                 except Exception:
                     continue
 
-                ultima_fecha_jobs = None
-                ultima_fecha_commits = None
+                # Ultima modificacion = ultimo commit (fallback versionTag).
+                # Ultima ejecucion = ultimo job (None si nunca se ejecuto).
+                # Sin prefiltro por versionTag: un proyecto nuevo sin jobs
+                # debe pasar a evaluacion (sera candidato en umbral == 1).
+                ultima_mod = _ultima_mod_desde_timeline(project, fallback_date)
+                ultima_ejec = _ultima_ejec_desde_jobs(project)
 
-                try:
-                    for j in project.list_jobs():
-                        start_ms = j.get('def', {}).get('initiationTimestamp', 0) or j.get('startTime', 0)
-                        dt = _ms_to_datetime(start_ms)
-                        if dt and (ultima_fecha_jobs is None or dt > ultima_fecha_jobs):
-                            ultima_fecha_jobs = dt
-                except Exception as e_jobs:
-                    print(f"No se pudieron obtener jobs de {p.get('projectKey')}: {e_jobs}")
+                if ultima_mod is None and ultima_ejec is None:
+                    continue
 
-                try:
-                    items = (project.get_timeline() or {}).get('items', [])
-                    for item in items:
-                        dt = _ms_to_datetime(item.get('timestamp', 0))
-                        if dt and (ultima_fecha_commits is None or dt > ultima_fecha_commits):
-                            ultima_fecha_commits = dt
-                except Exception as e_git:
-                    print(f"No se pudo obtener timeline de {p.get('projectKey')}: {e_git}")
+                if ultima_ejec is None:
+                    # Nunca ejecutado: solo la limpieza profunda (>=1 mes)
+                    # lo contempla, sin importar su antiguedad.
+                    if umbral != 1:
+                        continue
+                    meses_inactivo = months_between(ultima_mod, hoy)
+                    # Orden: lo mas antiguo primero; si ni mod existe, al fondo.
+                    orden = meses_inactivo if ultima_mod else -1
+                    candidatos.append({
+                        "_orden": orden,
+                        "id_proyecto": p['projectKey'],
+                        "nombre_proyecto": p.get('name', p['projectKey']),
+                        "ultima_modificacion": _fmt_fecha(ultima_mod),
+                        "ultima_ejecucion": "-",
+                        "bucket": clasificar_bucket(meses_inactivo) if ultima_mod else 1,
+                    })
+                    continue
 
-                cands = [d for d in (last_mod_date, ultima_fecha_jobs, ultima_fecha_commits) if d]
-                fecha_ultima_actividad = max(cands) if cands else None
-                meses_inactivo = months_between(fecha_ultima_actividad, hoy)
+                cands = [d for d in (ultima_mod, ultima_ejec) if d]
+                fecha_ref = max(cands) if cands else None
+                meses_inactivo = months_between(fecha_ref, hoy)
 
                 # Solo Eliminar llega al frontend; Preservar ni se lista.
                 if meses_inactivo >= umbral:
-                    last_mod_str = last_mod_date.strftime('%Y-%m-%d') if last_mod_date else "-"
                     candidatos.append({
                         "_orden": meses_inactivo,
                         "id_proyecto": p['projectKey'],
                         "nombre_proyecto": p.get('name', p['projectKey']),
-                        "ultima_modificacion": last_mod_str,
+                        "ultima_modificacion": _fmt_fecha(ultima_mod),
+                        "ultima_ejecucion": _fmt_fecha(ultima_ejec),
                         "bucket": clasificar_bucket(meses_inactivo),
                     })
         except Exception as ex_instancia:
@@ -210,15 +252,17 @@ def analizar_proyecto():
 
         project = client.get_project(proyecto_id)
 
-        last_mod_ms = info_proyecto.get('versionTag', {}).get('lastModifiedOn', 0)
-        last_mod_date = _ms_to_datetime(last_mod_ms)
-        last_mod_str = last_mod_date.strftime('%Y-%m-%d') if last_mod_date else "-"
+        fallback_date = _ms_to_datetime(
+            info_proyecto.get('versionTag', {}).get('lastModifiedOn', 0))
 
         num_datasets = len(project.list_datasets())
         num_recipes = len(project.list_recipes())
         num_scenarios = len(project.list_scenarios())
 
-        # 2. EXTRAER HISTORIAL DE ACTIVIDAD (jobs + timeline)
+        # 2. EXTRAER HISTORIAL DE ACTIVIDAD (jobs + timeline).
+        # Las graficas siguen contando ambos; las fechas determinantes son:
+        # ultima_modificacion = ultimo commit (fallback versionTag),
+        # ultima_ejecucion = ultimo job (None si nunca se ejecuto).
         actividad_por_mes = defaultdict(int)
         total_jobs_ejecutados = 0
         total_commits = 0
@@ -256,12 +300,22 @@ def analizar_proyecto():
 
         hoy = datetime.datetime.now()
 
-        # Criterio interno (no visible): meses sin actividad determinan
-        # si el proyecto es Eliminar (>= umbral) o Preservar.
-        candidatos = [d for d in (last_mod_date, ultima_fecha_jobs, ultima_fecha_commits) if d]
-        fecha_ultima_actividad = max(candidatos) if candidatos else None
-        months_since_last_activity = months_between(fecha_ultima_actividad, hoy)
-        decision = "Eliminar" if months_since_last_activity >= umbral else "Preservar"
+        # Ultima modificacion = ultimo commit, fallback versionTag.
+        # Ultima ejecucion = ultimo job (None = nunca ejecutado).
+        ultima_mod = ultima_fecha_commits if ultima_fecha_commits else fallback_date
+        ultima_ejec = ultima_fecha_jobs
+
+        if ultima_ejec is None:
+            # Nunca ejecutado: Eliminar solo en limpieza profunda (>=1 mes).
+            if ultima_mod is None:
+                decision = "Preservar"
+            else:
+                decision = "Eliminar" if umbral == 1 else "Preservar"
+        else:
+            candidatos = [d for d in (ultima_mod, ultima_ejec) if d]
+            fecha_ref = max(candidatos) if candidatos else None
+            months_since = months_between(fecha_ref, hoy)
+            decision = "Eliminar" if months_since >= umbral else "Preservar"
 
         meses_eje = []
         actividad_eje = []
@@ -279,13 +333,13 @@ def analizar_proyecto():
         idx_corte_4_meses = 11 - UMBRAL_MESES_INACTIVIDAD
         idx_corte_umbral = 11 - umbral
 
-        # Métricas visibles: solo Jobs, Última modificación y Commits.
-        # Meses/Decisión/Propietario son criterio interno (no se muestran),
-        # salvo `decision` como señal para retirar un Preservar del listado.
+        # Metricas visibles: solo Ultima modificacion (ultimo commit)
+        # y Ultima ejecucion (ultimo job). Los conteos solo alimentan
+        # las graficas. `decision` es serial interna para retirar un
+        # Preservar del listado.
         metricas = {
-            "jobs_ejecutados": total_jobs_ejecutados,
-            "ultima_modificacion": last_mod_str,
-            "commits": total_commits,
+            "ultima_modificacion": _fmt_fecha(ultima_mod),
+            "ultima_ejecucion": _fmt_fecha(ultima_ejec),
             "umbral_meses": umbral,
             "decision": decision,
         }

@@ -343,7 +343,8 @@ async function cargarProyectosInactivos() {
         estadoProyectos.push({
           id_proyecto: proyecto.id_proyecto,
           nombre_proyecto: proyecto.nombre_proyecto,
-          ultima_modificacion: proyecto.ultima_modificacion || "",
+          ultima_modificacion: proyecto.ultima_modificacion || "-",
+          ultima_ejecucion: proyecto.ultima_ejecucion || "-",
           bucket:
             proyecto.bucket !== undefined && proyecto.bucket !== null
               ? proyecto.bucket
@@ -391,7 +392,7 @@ function renderizarPanelIzquierdo() {
     const btn = document.createElement("button");
     btn.className = `btn-project umbral-${bucket} ${esActivo}`;
     btn.textContent = proyecto.nombre_proyecto;
-    btn.title = "Candidato a eliminación";
+    btn.title = `Mod: ${proyecto.ultima_modificacion || "-"} | Ejec: ${proyecto.ultima_ejecucion || "-"}`;
     btn.onclick = () => {
       document
         .querySelectorAll(".btn-project")
@@ -443,9 +444,8 @@ function resetearDashboardCentral() {
   msgGrafica.classList.remove("hidden");
   msgGrafica.textContent = "Esperando selección...";
 
-  document.getElementById("metric-jobs").textContent = "0";
   document.getElementById("metric-last-mod").textContent = "-";
-  document.getElementById("metric-commits").textContent = "0";
+  document.getElementById("metric-last-exec").textContent = "-";
   document.getElementById("btn-preservar-centro").classList.add("hidden");
 }
 
@@ -466,9 +466,8 @@ async function consultarMetricasProyecto(idProyecto, nombreProyecto) {
   msgGrafica.classList.remove("hidden");
   msgGrafica.textContent = "Calculando métricas...";
 
-  document.getElementById("metric-jobs").textContent = "...";
   document.getElementById("metric-last-mod").textContent = "...";
-  document.getElementById("metric-commits").textContent = "...";
+  document.getElementById("metric-last-exec").textContent = "...";
 
   try {
     const profundidad = getProfundidad();
@@ -507,10 +506,10 @@ async function consultarMetricasProyecto(idProyecto, nombreProyecto) {
       );
 
       const m = data.metricas;
-      document.getElementById("metric-jobs").textContent = m.jobs_ejecutados;
       document.getElementById("metric-last-mod").textContent =
-        m.ultima_modificacion;
-      document.getElementById("metric-commits").textContent = m.commits;
+        m.ultima_modificacion ?? "-";
+      document.getElementById("metric-last-exec").textContent =
+        m.ultima_ejecucion ?? "-";
     } else {
       msgGrafica.classList.remove("hidden");
       msgGrafica.textContent = "Error: " + data.message;
