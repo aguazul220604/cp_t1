@@ -1,9 +1,13 @@
 # Pegar en Dataiku: Library Editor > pii_lib > normalize.py
-# Proyecto: PII_LGBM — Fase 0. Sin dependencias fuera de pandas/sklearn base.
+# Proyecto: PII_LGBM — Fases 0/1/3a. Sin dependencias fuera de pandas/sklearn base.
 import re
 import unicodedata
 
+import numpy as np
 import pandas as pd
+from sklearn.cluster import AffinityPropagation, AgglomerativeClustering
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 ROOTS = ["cliente", "telefono", "poblacion", "destino", "linea",
          "nombre", "fecha", "nacim", "banco", "capt",
@@ -41,6 +45,11 @@ def normalize_aggr(s) -> str:
     return _split_roots(base)
 
 
+def normalize_light_split(s) -> str:
+    """Light + split raices, SIN strip de digitos (para nombrar clusters Fase 1)."""
+    return _split_roots(normalize_light(s))
+
+
 def parse_pii(col: pd.Series) -> pd.Series:
     """Acepta boolean nativo Dataiku, 'TRUE'/'FALSE', 1/0."""
     if col.dtype == object:
@@ -73,3 +82,65 @@ def dedup_catalog(df: pd.DataFrame, col: str = "name",
     g["pii_any"] = g["n_true"] > 0
     g["pii_majority"] = g["n_true"] * 2 >= g["n_rows"]
     return g
+
+
+# ---------------------------------------------------------------- Fase 1
+def build_char_tfidf(texts: list) -> tuple:
+    vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4))
+    X = vec.fit_transform([t or "" for t in texts])
+    return vec, X
+
+
+def cluster_affinity_sweep(S: np.ndarray, random_state: int = 0) -> dict:
+    """Barre preference en p50/p70/p90. Devuelve {pref: labels}."""
+    prefs = [float(np.percentile(S, p)) for p in (50, 70, 90)]
+    out = {}
+    for pref in prefs:
+        ap = AffinityPropagation(affinity="precomputed",
+                                 preference=pref, random_state=random_state)
+        out[pref] = ap.fit_predict(S)
+    return out
+
+
+def cluster_fallback(X, n_below: int = 3, n_above: int = 50,
+                     labels=None) -> np.ndarray:
+    """Si AP da <n_below o >n_above clusters (o vacio), usa Aglomerativo."""
+    if labels is not None:
+        k = len(set(labels)) - (1 if -1 in labels else 0)
+        if n_below <= k <= n_above:
+            return np.asarray(labels)
+    agg = AgglomerativeClustering(
+        n_clusters=None, distance_threshold=0.5,
+        metric="cosine", linkage="average")
+    return agg.fit_predict(X.toarray() if hasattr(X, "toarray") else X)
+
+
+def name_clusters(light_texts: list, labels) -> dict:
+    """TF-IDF palabra-bigrama por cluster; termino top = Entity."""
+    df = pd.DataFrame({"t": light_texts, "c": list(labels)})
+    names = {}
+    for c, grp in df.groupby("c"):
+        docs = grp["t"].tolist()
+        if len(docs) == 1:
+            tok = (docs[0] or "").split()
+            names[c] = tok[0] if tok else f"cluster_{c}"
+            continue
+        v = TfidfVectorizer(analyzer="word", ngram_range=(1, 2))
+        X = v.fit_transform(docs)
+        top = v.get_feature_names_out()[int(X.sum(axis=0).argmax())]
+        names[c] = top.split()[0]
+    return names
+
+
+# ---------------------------------------------------------------- Fase 3a
+THRESH_FUERTE = 90.0
+THRESH_PARCIAL = 50.0
+W_SIN_EVIDENCIA = 0.3
+
+
+def assign_pii_final(similarity: float, vecino_pii: bool, pii_orig: bool):
+    if similarity >= THRESH_FUERTE:
+        return bool(vecino_pii), "validado_21k", 1.0
+    if similarity >= THRESH_PARCIAL:
+        return bool(vecino_pii), "evidencia_parcial", round(float(similarity) / 100, 4)
+    return bool(pii_orig), "sin_evidencia_mantenido", W_SIN_EVIDENCIA
