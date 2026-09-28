@@ -201,6 +201,22 @@ def canonical_entity(raw_entity, exemplar) -> tuple:
             else "otros"), "fallback"
 
 
+# ---------------------------------------------------------------- Fase 2
+MIN_EJEMPLOS_CLASE = 3
+
+
+def preparar_juez(df: pd.DataFrame, feat_col: str = "light",
+                  target_col: str = "entity_canon") -> tuple:
+    """Filtra canon no nula; fusiona clases con <MIN_EJEMPLOS_CLASE a 'otros'.
+    Devuelve (df_listo, fusionadas: dict)."""
+    base = df[df[target_col].notna()].copy()
+    counts = base[target_col].value_counts()
+    debiles = [c for c, n in counts.items() if n < MIN_EJEMPLOS_CLASE]
+    base[target_col] = base[target_col].apply(
+        lambda c: "otros" if c in debiles else c)
+    return base, {c: int(counts[c]) for c in debiles}
+
+
 # ---------------------------------------------------------------- Fase 3a
 THRESH_FUERTE = 90.0
 THRESH_PARCIAL = 50.0
