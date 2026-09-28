@@ -139,6 +139,68 @@ def name_clusters(light_texts: list, labels) -> dict:
     return names
 
 
+# ---------------------------------------------------------------- Fase 1b
+# Mapping auto-propuesto 188 clusters -> ~15 entidades canonicas.
+# TELEFONO fusiona tel/cel/efono/telefono (decision usuario).
+CANON_EXACT = {
+    "contrato": "contrato", "contract": "contrato",
+    "cust": "cliente", "cliente": "cliente", "clnt": "cliente",
+    "borrower": "cliente",
+    "cuenta": "cuenta", "cuentabasica": "cuenta", "acct": "cuenta",
+    "account": "cuenta", "nmbr": "cuenta", "im": "cuenta", "trnsfr": "cuenta",
+    "addr": "direccion", "zip": "direccion", "poblacion": "direccion",
+    "nacion": "direccion", "nompob": "direccion", "nomcol": "direccion",
+    "merch": "direccion",
+    "capital": "saldo", "sdo": "saldo", "sdodaact": "saldo", "saldo": "saldo",
+    "tel": "telefono", "tel1": "telefono", "tel2": "telefono", "cel": "telefono",
+    "efono": "telefono", "telefono": "telefono",
+    "fnacim1": "fecha_nacimiento", "fnacim": "fecha_nacimiento",
+    "dt": "fecha",
+    "credito": "credito", "loan": "credito", "lmt": "credito", "imp": "credito",
+    "crd": "tarjeta", "post": "tarjeta",
+    "rfc": "id_persona", "nss": "id_persona", "soeid": "id_persona",
+    "digitos": "id_persona",
+    "nom": "nombre_persona", "name": "nombre_persona", "nm": "nombre_persona",
+    "apellidomaterno": "nombre_persona", "apellidopaterno": "nombre_persona",
+    "razonsocial": "nombre_persona",
+    "ingresos": "ingresos",
+    "cde": "otros", "line": "otros", "impcasa": "otros", "ind": "otros",
+    "indicadorextranjero": "otros", "src": "otros", "tok": "otros",
+    "user": "otros", "ptrmadre": "otros", "rewrite": "otros",
+}
+
+# Para raw ambiguos (num/n/nbr/v): decide por keywords del exemplar.
+CANON_KEYWORDS = [
+    ("tarjeta", ("tarjeta", "plastico", "card", "crd", "cheque", "cobrand")),
+    ("cuenta", ("cuenta", "acct", "cta", "ctache", "ctogru")),
+    ("cliente", ("cliente", "cust", "clnt")),
+    ("contrato", ("contrato", "contract")),
+    ("credito", ("credito", "credit", "loan", "lmt")),
+    ("telefono", ("telefono", "tel", "cel", "fono", "phone")),
+    ("nombre_persona", ("nombre", "nom", "beneficiario", "apellido", "razon")),
+    ("id_persona", ("rfc", "nss", "curp", "soeid", "fiscal")),
+    ("fecha_nacimiento", ("nacim", "fnacim")),
+    ("fecha", ("fecha", "dt", "expiry", "expry")),
+    ("saldo", ("saldo", "sdo", "ingreso", "capital")),
+    ("direccion", ("addr", "zip", "poblacion", "municipio", "pob", "col", "nacion")),
+]
+
+
+def canonical_entity(raw_entity, exemplar) -> tuple:
+    """Devuelve (canon, metodo). Strip digitos: tel1->tel."""
+    raw = (raw_entity or "").strip().lower()
+    raw = TRAILING_NUM.sub("", raw).strip() or raw
+    if raw in CANON_EXACT:
+        return CANON_EXACT[raw], "exact"
+    exe = (exemplar or "").lower()
+    blob = f"{raw} {exe}"
+    for canon, kws in CANON_KEYWORDS:
+        if any(k in blob for k in kws):
+            return canon, "exemplar"
+    return ("numero" if raw in ("num", "n", "nbr", "v") and "num" in blob
+            else "otros"), "fallback"
+
+
 # ---------------------------------------------------------------- Fase 3a
 THRESH_FUERTE = 90.0
 THRESH_PARCIAL = 50.0

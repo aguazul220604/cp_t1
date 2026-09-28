@@ -54,19 +54,25 @@ out["pii_final"] = out["key"].map(lambda k: meta.get(k, (None,) * 6)[3] if k els
 out["label_source"] = out["key"].map(lambda k: meta.get(k, (None,) * 6)[4] if k else None)
 out["sample_weight"] = out["key"].map(lambda k: meta.get(k, (None,) * 6)[5] if k else None)
 
-# Nombres vacios: explicitos, nunca nulos.
+# Nombres vacios: fuera de entrenamiento (peso 0, pii_final NULL).
 empty = out["key"] == ""
+out["has_name"] = ~empty
 out.loc[empty, ["vecino_21k", "vecino_pii"]] = [None, False]
 out.loc[empty, ["similarity", "pii_final", "label_source", "sample_weight"]] = [
-    0.0, False, "nombre_vacio", 0.1]
+    0.0, None, "nombre_vacio", 0.0]
 
-# Asercion cero-nulos (falla la recipe si reaparece el bug).
-assert out["pii_final"].notna().all(), "pii_final con nulos"
+# Aserciones: sample_weight sin nulos; pii_final solo admite nulos en vacios.
 assert out["sample_weight"].notna().all(), "sample_weight con nulos"
+assert out.loc[out["has_name"], "pii_final"].notna().all(), "pii_final con nulos en has_name"
+assert ((out["label_source"] == "nombre_vacio") == (~out["has_name"])).all(), \
+    "has_name inconsistente con nombre_vacio"
 print(out["label_source"].value_counts().to_string())
-print("flips TRUE->FALSE:",
-      int(((out["pii"].astype(str).str.upper() == "TRUE") & (~out["pii_final"].astype(bool))).sum()),
-      "| FALSE->TRUE:",
-      int(((out["pii"].astype(str).str.upper() != "TRUE") & (out["pii_final"].astype(bool))).sum()))
+print("flips TRUE->FALSE (has_name):",
+      int(((out["pii"].astype(str).str.upper() == "TRUE") & (out["has_name"]) & (~out["pii_final"].astype(bool))).sum()),
+      "| FALSE->TRUE (has_name):",
+      int(((out["pii"].astype(str).str.upper() != "TRUE") & (out["has_name"]) & (out["pii_final"].astype(bool))).sum()))
+print("filas con nombre:", int(out["has_name"].sum()),
+      "| pii_final True (has_name):",
+      int(out.loc[out["has_name"], "pii_final"].astype(bool).sum()))
 
 dataiku.Dataset("dataset_267k_pii_final").write_with_schema(out)
