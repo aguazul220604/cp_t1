@@ -69,8 +69,8 @@ def type_ohe(s):
         columns=["typ_" + t for t in top_types] + ["typ_OTROS"],
         fill_value=0).astype(np.int8).values
 
-type_tr = type_ohe(tr["type"]).values
-type_va = type_ohe(va["type"]).values
+type_tr = type_ohe(tr["type"])
+type_va = type_ohe(va["type"])
 
 # ---- texto ----
 vec_name = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4))
@@ -84,7 +84,7 @@ Xd_va = vec_desc.transform(va["description"].fillna("").tolist())
 rng = np.random.RandomState(SEED)
 drop = rng.rand(len(tr)) < DROPOUT
 Xd_tr_d = Xd_tr.copy().tolil()
-Xd_tr_d[drop] = 0
+Xd_tr_d[drop, :] = 0
 Xd_tr_d = Xd_tr_d.tocsr()
 Xd_va_0 = csr_matrix(Xd_va.shape)  # val enmascarada (escenario produccion)
 
@@ -152,19 +152,19 @@ Xfull_desc = vec_desc.transform(df["description"].fillna("").tolist())
 if W == "B":
     d = rng.rand(len(df)) < DROPOUT
     Xfull_desc = Xfull_desc.copy().tolil()
-    Xfull_desc[d] = 0
+    Xfull_desc[d, :] = 0
     Xfull_desc = Xfull_desc.tocsr()
     num_full = np.vstack([df["longitud"].values,
                           (df["has_description"].astype(int).values * (~d)).astype(int),
                           df["dataset"].map(te_map).fillna(glob).values]).T
     Xfull = hstack([Xfull_name, Xfull_desc, csr_matrix(num_full),
-                    csr_matrix(type_ohe(df["type"]).values)]).tocsr()
+                    csr_matrix(type_ohe(df["type"]))]).tocsr()
 else:
     num_full = np.vstack([df["longitud"].values,
                           df["has_description"].astype(int).values,
                           df["dataset"].map(te_map).fillna(glob).values]).T
     Xfull = hstack([Xfull_name, csr_matrix(num_full),
-                    csr_matrix(type_ohe(df["type"]).values)]).tocsr()
+                    csr_matrix(type_ohe(df["type"]))]).tocsr()
 final = LGBMClassifier(objective="binary", num_leaves=63, n_estimators=500,
                        learning_rate=0.05, min_child_samples=20,
                        scale_pos_weight=float(((1 - y) * sw).sum() / max((y * sw).sum(), 1)),
