@@ -41,20 +41,22 @@ tr, va = df.iloc[tr_idx].reset_index(drop=True), df.iloc[va_idx].reset_index(dro
 ytr, yva = y[tr_idx], y[va_idx]
 swtr = sw[tr_idx]
 
-# ---- dataset: target encoding out-of-fold (train) ----
+# ---- dataset: target encoding out-of-fold (train), sin groupby.apply ----
+def _te_frame(keys: pd.Series, vals: np.ndarray, wts: np.ndarray):
+    s = pd.Series(vals * wts, index=keys.index)
+    w = pd.Series(wts, index=keys.index)
+    m = s.groupby(keys.values).sum() / w.groupby(keys.values).sum()
+    n = keys.value_counts()
+    return (m * n + TE_ALPHA * glob) / (n + TE_ALPHA)
+
+
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
 te_oof = np.zeros(len(tr))
 glob = float(np.average(ytr, weights=swtr))
 for a, b in skf.split(tr, ytr):
-    m = tr.iloc[a].groupby("dataset").apply(
-        lambda g: (ytr[g.index] * swtr[g.index]).sum() / swtr[g.index].sum())
-    n = tr.iloc[a].groupby("dataset").size()
-    te_oof[b] = tr.iloc[b]["dataset"].map(
-        (m * n + TE_ALPHA * glob) / (n + TE_ALPHA)).fillna(glob).values
-full_map = tr.groupby("dataset").apply(
-    lambda g: (ytr[g.index] * swtr[g.index]).sum() / swtr[g.index].sum())
-full_n = tr.groupby("dataset").size()
-te_map = ((full_map * full_n + TE_ALPHA * glob) / (full_n + TE_ALPHA)).to_dict()
+    te_fold = _te_frame(tr["dataset"].iloc[a], ytr[a], swtr[a])
+    te_oof[b] = tr["dataset"].iloc[b].map(te_fold).fillna(glob).values
+te_map = _te_frame(tr["dataset"], ytr, swtr).to_dict()
 te_tr = te_oof
 te_va = va["dataset"].map(te_map).fillna(glob).values
 
@@ -64,7 +66,8 @@ top_types = tr["type"].fillna("").value_counts().head(TOP_TYPES).index.tolist()
 def type_ohe(s):
     s = s.fillna("").where(s.isin(top_types), "OTROS")
     return pd.get_dummies(s, prefix="typ").reindex(
-        columns=["typ_" + t for t in top_types] + ["typ_OTROS"], fill_value=0)
+        columns=["typ_" + t for t in top_types] + ["typ_OTROS"],
+        fill_value=0).astype(np.int8).values
 
 type_tr = type_ohe(tr["type"]).values
 type_va = type_ohe(va["type"]).values
