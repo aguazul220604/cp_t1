@@ -67,17 +67,24 @@ def bucket(score: float) -> str:
     return "nula(<50)"
 
 
+def join_key(s) -> str:
+    """Clave robusta de join: light (lower, sin acentos, trim). '' si nulo/vacio."""
+    return normalize_light(s)
+
+
 def dedup_catalog(df: pd.DataFrame, col: str = "name",
                   pii_col: str = "pii") -> pd.DataFrame:
     tmp = df[[col, pii_col]].copy()
     tmp["_is_pii"] = parse_pii(tmp[pii_col])
     tmp["_light"] = tmp[col].map(normalize_light)
     tmp["_aggr"] = tmp[col].map(normalize_aggr)
+    tmp["_key"] = tmp[col].map(join_key)
     g = tmp.groupby(col, as_index=False).agg(
         n_rows=(col, "size"),
         n_true=("_is_pii", "sum"),
         light=("_light", "first"),
         aggr=("_aggr", "first"),
+        key=("_key", "first"),
     )
     g["pii_any"] = g["n_true"] > 0
     g["pii_majority"] = g["n_true"] * 2 >= g["n_rows"]
