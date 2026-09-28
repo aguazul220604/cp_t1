@@ -57,11 +57,12 @@ final = LGBMClassifier(objective="multiclass", num_class=len(clases),
 final.fit(X, y_lab)
 
 folder = dataiku.Folder("fase2_juez")
-final.booster_.save_model(os.path.join(folder.get_path(), "modelo.txt"))
-with folder.get_writer("vectorizer.pkl") as w:
-    w.write(pickle.dumps(vec))
-with folder.get_writer("clases.json") as w:
-    w.write(json.dumps(clases, ensure_ascii=False))
+fdir = folder.get_path()
+final.booster_.save_model(os.path.join(fdir, "modelo.txt"))
+with open(os.path.join(fdir, "vectorizer.pkl"), "wb") as w:
+    pickle.dump(vec, w)
+with open(os.path.join(fdir, "clases.json"), "w", encoding="utf-8") as w:
+    json.dump(clases, w, ensure_ascii=False)
 
 debiles = resumen[resumen["f1_mean"] < 0.5]["entity"].tolist()
 html = ("<html><head><meta charset='utf-8'><title>Fase 2 — Juez</title></head>"
@@ -71,6 +72,6 @@ html = ("<html><head><meta charset='utf-8'><title>Fase 2 — Juez</title></head>
         f"<p>Clases fusionadas a 'otros' (&lt;3 ejemplos): {fusionadas}</p>"
         f"<p>Entidades debiles (F1&lt;0.5, prob_entity esperada baja): {debiles}</p>"
         f"{resumen.to_html(index=False)}</body></html>")
-with folder.get_writer("metricas.html") as w:
+with open(os.path.join(fdir, "metricas.html"), "w", encoding="utf-8") as w:
     w.write(html)
 print(f"accuracy={np.mean(accs):.3f} f1_macro={np.mean(f1s):.3f} clases={len(clases)}")
