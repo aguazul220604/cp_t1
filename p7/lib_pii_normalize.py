@@ -217,6 +217,95 @@ def preparar_juez(df: pd.DataFrame, feat_col: str = "light",
     return base, {c: int(counts[c]) for c in debiles}
 
 
+# ---------------------------------------------------------------- Fase 7/8
+# Inferencia produccion/piloto. Requiere artefactos de fase5_modelo y fase2_juez.
+# Sin dependencias fuera de pandas/sklearn/lightgbm/scipy base.
+def cargar_artefactos(fase5_dir: str, fase2_dir: str) -> dict:
+    import json
+    import os
+    import pickle
+
+    import lightgbm as lgb
+
+    with open(os.path.join(fase5_dir, "vec_name.pkl"), "rb") as f:
+        vec_name = pickle.load(f)
+    with open(os.path.join(fase5_dir, "encoders.json"), encoding="utf-8") as f:
+        enc = json.load(f)
+    with open(os.path.join(fase2_dir, "vectorizer.pkl"), "rb") as f:
+        j_vec = pickle.load(f)
+    with open(os.path.join(fase2_dir, "clases.json"), encoding="utf-8") as f:
+        j_clases = json.load(f)
+    return {"vec_name": vec_name, "te_map": enc["te_map"],
+            "te_global": float(enc["te_global"]),
+            "top_types": enc["top_types"],
+            "threshold": float(enc["threshold"]),
+            "variante": enc.get("variante", "A"),
+            "clf": lgb.Booster(model_file=os.path.join(fase5_dir, "modelo.txt")),
+            "j_vec": j_vec, "j_clases": j_clases,
+            "j_bst": lgb.Booster(model_file=os.path.join(fase2_dir, "modelo.txt"))}
+
+
+def featurizar_inferencia(df: pd.DataFrame, arts: dict):
+    import numpy as np
+    from scipy.sparse import csr_matrix, hstack
+
+    base = df.copy()
+    base["key"] = base["name"].map(join_key)
+    base["longitud"] = base["name"].fillna("").astype(str).str.len()
+    if "description" in base.columns:
+        base["has_description"] = base["description"].notna() & (
+            base["description"].astype(str).str.strip() != "")
+    else:
+        base["has_description"] = False
+    if "type" not in base.columns:
+        base["type"] = "UNKNOWN"
+    if "dataset" not in base.columns:
+        base["dataset"] = "piloto"
+    Xn = arts["vec_name"].transform(base["key"].fillna("").tolist())
+    te = base["dataset"].map(arts["te_map"]).fillna(arts["te_global"]).values
+    top = arts["top_types"]
+    s = base["type"].fillna("").where(base["type"].isin(top), "OTROS")
+    import pandas as _pd
+    typ = _pd.get_dummies(s, prefix="typ").reindex(
+        columns=["typ_" + t for t in top] + ["typ_OTROS"],
+        fill_value=0).astype(np.int8).values
+    num = np.vstack([base["longitud"].values,
+                     base["has_description"].astype(int).values, te]).T
+    X = hstack([Xn, csr_matrix(num), csr_matrix(typ)]).tocsr()
+    return base, X
+
+
+def _softmax(scores: np.ndarray) -> np.ndarray:
+    import numpy as np
+
+    if scores.ndim == 1:
+        scores = np.vstack([1 - scores, scores]).T
+    if not np.allclose(scores.sum(axis=1), 1.0, atol=1e-3):
+        e = np.exp(scores - scores.max(axis=1, keepdims=True))
+        scores = e / e.sum(axis=1, keepdims=True)
+    return scores
+
+
+def predecir(df: pd.DataFrame, arts: dict) -> pd.DataFrame:
+    import numpy as np
+
+    base, X = featurizar_inferencia(df, arts)
+    prob = np.asarray(arts["clf"].predict(X)).ravel()
+    base["prob_pii"] = np.round(prob, 4)
+    base["pii"] = prob >= arts["threshold"]
+    base["entity"] = None
+    base["prob_entity"] = np.nan
+    mask = base["key"] != ""
+    pmask = mask & base["pii"]
+    if int(pmask.sum()):
+        Xj = arts["j_vec"].transform(base.loc[pmask, "key"].tolist())
+        sj = _softmax(np.asarray(arts["j_bst"].predict(Xj)))
+        idx = sj.argmax(axis=1)
+        base.loc[pmask, "entity"] = [arts["j_clases"][i] for i in idx]
+        base.loc[pmask, "prob_entity"] = np.round(sj.max(axis=1), 4)
+    return base
+
+
 # ---------------------------------------------------------------- Fase 3a
 THRESH_FUERTE = 90.0
 THRESH_PARCIAL = 50.0
