@@ -13,7 +13,7 @@ import pandas as pd
 from pii_lib.normalize import cargar_artefactos, join_key, predecir
 
 cols = dataiku.Dataset("piloto_columnas").get_dataframe()
-f5 = dataiku.Folder("fase5_modelo").get_path()
+f5 = dataiku.Folder("fase5_modelo_operativo").get_path()
 f2 = dataiku.Folder("fase2_juez").get_path()
 arts = cargar_artefactos(f5, f2)
 
