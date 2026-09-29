@@ -35,8 +35,18 @@ df = dataiku.Dataset("dataset_entrenamiento_final").get_dataframe().reset_index(
 y = df["pii_final"].astype(bool).astype(int).values
 sw = df["sample_weight"].astype(float).values
 
-tr_idx, va_idx = train_test_split(np.arange(len(df)), test_size=0.20,
-                                  stratify=y, random_state=SEED)
+# Split por GRUPO de key (nombres distintos): val solo ve names no vistos
+# en train, como en produccion. Estratifica por etiqueta mayoritaria del key.
+key_lab = df.groupby("key")["pii_final"].apply(
+    lambda s: int(s.astype(bool).mean() >= 0.5))
+ukeys = key_lab.index.to_numpy()
+ktr, kva = train_test_split(ukeys, test_size=0.20,
+                            stratify=key_lab.values, random_state=SEED)
+tr_mask = df["key"].isin(ktr).values
+tr_idx, va_idx = np.where(tr_mask)[0], np.where(~tr_mask)[0]
+assert len(set(ktr) & set(kva)) == 0, "solape de keys train/val"
+print(f"keys train={len(ktr)} val={len(kva)} "
+      f"(filas train={(tr_mask).sum()} val={(~tr_mask).sum()})")
 tr, va = df.iloc[tr_idx].reset_index(drop=True), df.iloc[va_idx].reset_index(drop=True)
 ytr, yva = y[tr_idx], y[va_idx]
 swtr = sw[tr_idx]
@@ -203,7 +213,8 @@ html = ("<html><head><meta charset='utf-8'><title>Fase 5+6 — Modelo final</tit
         f"<p>Threshold produccion: <b>{winner['thr_f2']}</b> (F2max={winner['f2max']}, "
         f"precision={winner['prec_en_thr']}, recall={winner['rec_en_thr']} en val enmascarada).</p>"
         f"<img src='data:image/png;base64,{img}'/>"
-        "<p>Features: name TF-IDF char + descrip TF-IDF word (solo B) + longitud + "
+        "<p>Split por grupo de key (val = nombres NO vistos en train). "
+        "Features: name TF-IDF char + descrip TF-IDF word (solo B) + longitud + "
         "has_description + dataset TE-OOF + type OHE. Excluidas por fuga: "
         "entity/prob_entity, vecino_*/similarity/label_source, pii/target originales.</p>"
         "</body></html>")
