@@ -73,13 +73,15 @@ try:
 except Exception:
     n_ver = 0
 vid = f"v{n_ver + 1}"
+# La API exige el ID interno del folder, no su nombre (ej. WUE3dIoi).
+mf_id = {f["name"]: f["id"] for f in project.list_managed_folders()}["mlflow_tmp"]
 try:
     ver = sm.import_mlflow_version_from_managed_folder(
-        vid, "mlflow_tmp", "pii_model", CODE_ENV,
+        vid, mf_id, "pii_model", CODE_ENV,
         binary_classification_threshold=0.75)
 except TypeError:
     ver = sm.import_mlflow_version_from_managed_folder(
-        vid, "mlflow_tmp", "pii_model", CODE_ENV)
+        vid, mf_id, "pii_model", CODE_ENV)
 print(f"version importada: {vid}")
 
 try:
