@@ -26,9 +26,11 @@ body {
   margin: 0;
   font-family: "Segoe UI", "Inter", Arial, sans-serif;
   background:
-    radial-gradient(1200px 400px at 50% -80px, rgba(127, 184, 255, 0.25), transparent 70%),
-    var(--gray-bg);
-  color: var(--text-dark);
+    radial-gradient(1000px 380px at 12% -60px, rgba(208, 2, 27, 0.22), transparent 60%),
+    radial-gradient(900px 420px at 88% 0%, rgba(127, 184, 255, 0.18), transparent 60%),
+    linear-gradient(180deg, var(--navy-900) 0%, var(--navy-800) 45%, #0e356e 100%);
+  background-attachment: fixed;
+  color: #eaf2ff;
   min-height: 100vh;
 }
 
@@ -172,8 +174,8 @@ body {
   color: var(--sky-200);
 }
 .kicker-line { width: 28px; height: 2px; background: var(--banamex-red); border-radius: 2px; box-shadow: 0 0 12px rgba(208,2,27,.8); }
-.hero-copy h2 { margin: 12px 0 10px; font-size: clamp(26px, 4vw, 38px); line-height: 1.08; letter-spacing: -0.02em; font-weight: 800; }
-.hero-copy h2 em { font-style: normal; background: linear-gradient(90deg, #fff, var(--sky-200)); -webkit-background-clip: text; background-clip: text; color: transparent; position: relative; }
+.hero-copy h2 { margin: 12px 0 10px; font-size: clamp(26px, 4vw, 38px); line-height: 1.08; letter-spacing: -0.02em; font-weight: 800; color: #ff4d5e; text-shadow: 0 2px 18px rgba(255, 77, 94, 0.35); }
+.hero-copy h2 em { font-style: normal; color: #ff6b7a; text-shadow: 0 0 22px rgba(255, 77, 94, 0.55); }
 .hero-copy p { margin: 0; color: rgba(255,255,255,.78); font-size: 15px; line-height: 1.6; max-width: 52ch; }
 .hero-copy strong { color: #fff; background: rgba(208,2,27,.45); padding: 1px 7px; border-radius: 6px; border: 1px solid rgba(255,255,255,.25); font-weight: 700; }
 
@@ -343,12 +345,12 @@ body {
   transition: box-shadow .25s ease;
 }
 .table-shell:hover { box-shadow: 0 0 0 1px rgba(127,184,255,.6), 0 0 34px rgba(127,184,255,.4), 0 10px 30px rgba(7,26,61,.14); }
-.table-responsive { overflow-x: auto; border-radius: 10px; background: #fff; }
+.table-responsive { overflow-x: auto; border-radius: 10px; background: var(--sky-100); }
 .table-responsive::-webkit-scrollbar { height: 10px; }
 .table-responsive::-webkit-scrollbar-thumb { background: linear-gradient(90deg, var(--sky-300), var(--navy-700)); border-radius: 8px; }
 .table-responsive::-webkit-scrollbar-track { background: var(--sky-50); }
 
-#piiTable { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; background: #fff; }
+#piiTable { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; background: var(--sky-100); }
 #piiTable thead th {
   text-align: left;
   padding: 12px 14px;
@@ -366,24 +368,25 @@ body {
 #piiTable thead th:last-child { border-top-right-radius: 10px; }
 #piiTable tbody td {
   padding: 11px 14px;
-  border-bottom: 1px solid var(--sky-100);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.9);
   vertical-align: middle;
   transition: background .15s ease;
+  color: var(--navy-900);
 }
-#piiTable tbody tr { transition: transform .15s ease, background .15s ease, box-shadow .15s ease; background: #fff; }
-#piiTable tbody tr:nth-child(even) { background: var(--sky-50); }
+/* Todas las filas en azul claro uniforme (sin intercalado) */
+#piiTable tbody tr { transition: transform .15s ease, background .15s ease, box-shadow .15s ease; background: var(--sky-100); }
 #piiTable tbody tr:hover {
-  background: var(--sky-100) !important;
-  box-shadow: inset 3px 0 0 var(--sky-300), inset -3px 0 0 var(--sky-300);
+  background: var(--sky-200) !important;
+  box-shadow: inset 3px 0 0 var(--navy-700), inset -3px 0 0 var(--navy-700);
 }
 #piiTable tbody tr:last-child td { border-bottom: none; }
 #piiTable tbody tr:last-child td:first-child { border-bottom-left-radius: 10px; }
 #piiTable tbody tr:last-child td:last-child { border-bottom-right-radius: 10px; }
 
-/* Fila PII con acento rojo pero borde azul claro de contraste */
-#piiTable tbody tr.pii-row { background: linear-gradient(90deg, var(--danger-bg), #fff 70%); }
-#piiTable tbody tr.pii-row td:first-child { border-left: 3px solid var(--danger-text); }
-#piiTable tbody tr.pii-row:hover { background: #ffe9e7 !important; box-shadow: inset 3px 0 0 var(--banamex-red), inset 0 0 0 1px rgba(127,184,255,.5); }
+/* Fila PII: mismo azul claro, distinción solo por borde rojo + badge */
+#piiTable tbody tr.pii-row { background: var(--sky-100); }
+#piiTable tbody tr.pii-row td:first-child { border-left: 3px solid var(--banamex-red); }
+#piiTable tbody tr.pii-row:hover { background: var(--sky-200) !important; box-shadow: inset 3px 0 0 var(--banamex-red), inset 0 0 0 1px rgba(11, 42, 91, 0.25); }
 
 /* Animación de entrada por fila */
 #piiTable tbody tr.row-enter { animation: rowIn .4s ease both; }
@@ -409,7 +412,7 @@ body {
 /* Probabilidad con barra */
 .prob-cell { min-width: 150px; }
 .prob-wrap { display: flex; align-items: center; gap: 8px; }
-.prob-bar { flex: 1; height: 7px; border-radius: 999px; background: var(--sky-100); border: 1px solid var(--sky-200); overflow: hidden; min-width: 70px; }
+.prob-bar { flex: 1; height: 7px; border-radius: 999px; background: #ffffff; border: 1px solid var(--sky-300); overflow: hidden; min-width: 70px; }
 .prob-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--sky-300), var(--navy-700)); transition: width .6s ease; }
 .prob-fill.high { background: linear-gradient(90deg, #ff6b6b, var(--banamex-red-dark)); box-shadow: 0 0 8px rgba(208,2,27,.5); }
 .prob-num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--navy-800); font-size: 13px; }
@@ -445,7 +448,7 @@ body {
 
 .foot {
   display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;
-  font-size: 12px; color: var(--text-muted); padding: 6px 0 2px;
+  font-size: 12px; color: var(--sky-200); padding: 6px 0 2px;
 }
 .foot-sep { color: var(--banamex-red); font-weight: 800; }
 
