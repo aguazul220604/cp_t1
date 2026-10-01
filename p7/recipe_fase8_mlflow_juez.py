@@ -1,9 +1,3 @@
-# Dataiku Python recipe: fase8_mlflow_juez (Saved Model 2, MULTICLASS entity)
-# Inputs (Flow):  dataset_validated_entity_v2 + folder fase2_juez
-# Outputs (Flow): dataset_eval_juez + folder mlflow_juez_tmp (modelo MLflow)
-# + crea/actualiza programaticamente el Saved Model juez_entity_saved
-#   (MLFLOW_PYFUNC, MULTICLASS, 14 clases canonicas).
-# Requiere mlflow en el code env. CODE_ENV: verificar en Admin > Code envs.
 import json
 import os
 import shutil
@@ -13,11 +7,18 @@ import mlflow
 import pandas as pd
 from pii_lib.pyfunc_model import JuezEntityModel
 
-CODE_ENV = "CodeEnv39CleanProjects"  # <-- VERIFICAR nombre exacto del code env
+CODE_ENV = "CodeEnv39CleanProjects" 
 SAVED_MODEL_NAME = "juez_entity_saved"
 
+# Cargar la lista de clases del modelo Juez
+with open(os.path.join(dataiku.Folder("fase2_juez").get_path(),
+                       "clases.json"), encoding="utf-8") as f:
+    clases = json.load(f)
+print(f"clases={len(clases)}: {clases}")
+
+# Filtrar
 val = dataiku.Dataset("dataset_validated_entity_v2").get_dataframe()
-eva = val[val["entity_canon"].notna()].reset_index(drop=True)
+eva = val[val["entity_canon"].isin(clases)].reset_index(drop=True)
 dataiku.Dataset("dataset_eval_juez").write_with_schema(eva)
 print(f"eval_juez={len(eva)}")
 
@@ -71,7 +72,7 @@ except Exception as e:
     print(f"WARN set_core_metadata: {e}")
 try:
     ver.evaluate("dataset_eval_juez")
-    print("evaluate OK: revisar pestana Performance del Saved Model")
+    print("evaluate OK: revisar Performance del Saved Model")
 except Exception as e:
     print(f"WARN evaluate: {e} (revisar guarda de shapes en el log)")
 print("OK - verificar Saved Model juez_entity_saved en el Flow")

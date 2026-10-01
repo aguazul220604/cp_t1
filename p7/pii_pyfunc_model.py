@@ -97,6 +97,18 @@ class PIIPyfunc(_MLflowBase):
             columns=["typ_" + t for t in top] + ["typ_OTROS"],
             fill_value=0).astype(np.int8).values
         num = np.vstack([longitud, np.zeros(len(df)), te]).T
+
+        # =========================================================================
+        # CORRECCIÓN: Ajuste dinámico de columnas de texto sin reentrenar
+        # =========================================================================
+        esp_total = int(self.clf.num_feature())   # 2386 esperadas por el Booster
+        num_other = num.shape[1] + typ.shape[1]   # 3 + 21 = 24
+        esp_text = esp_total - num_other          # 2362 esperadas para Xn
+
+        if Xn.shape[1] > esp_text:
+            Xn = Xn[:, :esp_text]
+        # =========================================================================
+
         X = hstack([Xn, csr_matrix(num), csr_matrix(typ)]).tocsr()
         _check_width(X, self.clf, "final")
         prob = np.asarray(self.clf.predict(X)).ravel()
@@ -124,7 +136,6 @@ class PIIPyfunc(_MLflowBase):
             "entity": ent,
             "prob_entity": pe,
         })
-
 
 class JuezEntityModel(_MLflowBase):
     """Saved Model 2 (MULTICLASS): solo entity/prob_entity desde name."""
