@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Banamex | Core of Excellence and Machine Learning — Detección PII</title>
+    <title>
+      Banamex | Core of Excellence and Machine Learning — Detección PII
+    </title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -15,24 +17,22 @@
     <header class="header-banamex">
       <div class="header-inner">
         <span class="logo-wrap" aria-hidden="true">
-          <svg class="logo-svg" viewBox="0 0 64 64" role="img" aria-label="Banamex logo">
-            <circle cx="32" cy="32" r="29" fill="#D0021B" />
-            <circle cx="32" cy="32" r="24.5" fill="none" stroke="#ffffff" stroke-width="2" />
-            <path
-              d="M25 19 h11.5 c4.6 0 7.8 2.2 7.8 6.1 0 2.7-1.5 4.5-3.9 5.3 3.1.7 5 2.9 5 6.1 0 4.4-3.5 6.9-8.6 6.9 H25 V19 z M28.6 22.6 v7.4 h7.2 c2.6 0 4.1-1.3 4.1-3.7 0-2.4-1.6-3.7-4.1-3.7 h-7.2 z M28.6 33.4 v7.7 h7.9 c2.8 0 4.4-1.4 4.4-3.9 0-2.5-1.7-3.8-4.4-3.8 h-7.9 z"
-              fill="#ffffff" />
-          </svg>
+          <img class="logo-svg" src="img.svg" alt="Banamex" />
         </span>
         <div class="brand-text">
-          <h1 class="brand-title">Banamex | Cognitive Services and Machine Learning Core of Excellence</h1>
-          <p class="brand-subtitle">Detección e identificación de datos PII</p>
+          <h1 class="brand-title">
+            Banamex | Cognitive Services and Machine Learning Core of Excellence
+          </h1>
         </div>
       </div>
     </header>
 
     <section class="hero">
       <div class="hero-inner">
-        <h2>Detección e Identificación de Datos de Información de Identificación Personal (PII)</h2>
+        <h2>
+          Detección e Identificación de Datos de Información de Identificación
+          Personal (PII)
+        </h2>
       </div>
     </section>
 
@@ -43,7 +43,13 @@
           <label class="file-drop" for="datasetFile">
             <span id="fileHint">Ningún archivo seleccionado</span>
           </label>
-          <input type="file" id="datasetFile" accept=".csv,.xlsx,.xls" multiple hidden />
+          <input
+            type="file"
+            id="datasetFile"
+            accept=".csv,.xlsx,.xls"
+            multiple
+            hidden
+          />
           <button id="btnProcess" class="btn-banamex">Analizar PII</button>
         </div>
         <p id="uploadError" class="error-text" style="display: none"></p>
