@@ -7,8 +7,54 @@ document
   .getElementById("btnGenerateCsv")
   .addEventListener("click", handleGenerateCsvClick);
 
+// ---- Mejoras UI: hint de archivos + drag & drop (no tocan la lógica de inferencia) ----
+const fileInput = document.getElementById("datasetFile");
+const fileHint = document.getElementById("fileHint");
+const dropZone = document.getElementById("dropZone");
+const fileDrop = dropZone ? dropZone.querySelector(".file-drop") : null;
+
+if (fileInput) {
+  fileInput.addEventListener("change", updateFileHint);
+}
+if (fileDrop && fileInput) {
+  ["dragenter", "dragover"].forEach((ev) =>
+    fileDrop.addEventListener(ev, (e) => {
+      e.preventDefault();
+      fileDrop.classList.add("dragover");
+    })
+  );
+  ["dragleave", "drop"].forEach((ev) =>
+    fileDrop.addEventListener(ev, (e) => {
+      e.preventDefault();
+      fileDrop.classList.remove("dragover");
+    })
+  );
+  fileDrop.addEventListener("drop", (e) => {
+    if (e.dataTransfer && e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      updateFileHint();
+    }
+  });
+}
+
+function updateFileHint() {
+  if (!fileHint || !fileInput) return;
+  const n = fileInput.files ? fileInput.files.length : 0;
+  if (!n) {
+    fileHint.textContent = "Ningún archivo seleccionado";
+    fileHint.classList.remove("has-files");
+  } else {
+    const names = Array.from(fileInput.files)
+      .slice(0, 3)
+      .map((f) => f.name)
+      .join(", ");
+    const extra = n > 3 ? ` +${n - 3} más` : "";
+    fileHint.textContent = `${n} archivo(s): ${names}${extra}`;
+    fileHint.classList.add("has-files");
+  }
+}
+
 function handleProcessClick() {
-  const fileInput = document.getElementById("datasetFile");
   const files = fileInput.files;
 
   hideError();
@@ -46,7 +92,9 @@ function handleProcessClick() {
         showWarning(data.warnings.join(" | "));
       }
 
-      document.getElementById("piiSummarySection").style.display = "block";
+      const section = document.getElementById("piiSummarySection");
+      section.style.display = "block";
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
     })
     .catch((error) => {
       document.getElementById("loadingSpinner").style.display = "none";
@@ -54,12 +102,27 @@ function handleProcessClick() {
     });
 }
 
+function probBar(pct) {
+  const level = pct >= 75 ? "high" : "";
+  return `<span class="prob-wrap">
+    <span class="prob-bar"><span class="prob-fill ${level}" style="width:${pct.toFixed(1)}%"></span></span>
+    <span class="prob-num">${pct.toFixed(2)}%</span>
+  </span>`;
+}
+
 function renderSummary(columns) {
   const tbody = document.getElementById("piiListBody");
   tbody.innerHTML = "";
 
-  columns.forEach((col) => {
-    const probPct = (col.pii_probability * 100).toFixed(2);
+  const total = columns.length;
+  const piiCount = columns.filter((c) => c.is_pii).length;
+  const meta = document.getElementById("resultsMeta");
+  if (meta) {
+    meta.textContent = `${total} columnas analizadas · ${piiCount} PII detectadas`;
+  }
+
+  columns.forEach((col, i) => {
+    const probPct = (col.pii_probability * 100);
     const isPii = col.is_pii;
     const entity = col.entity ?? "—";
     const entityPct =
@@ -69,16 +132,18 @@ function renderSummary(columns) {
 
     const tr = document.createElement("tr");
     if (isPii) tr.classList.add("pii-row");
+    tr.classList.add("row-enter");
+    tr.style.animationDelay = `${Math.min(i * 0.03, 0.6)}s`;
 
     tr.innerHTML = `
       <td>${escapeHtml(col.source_file || "")}</td>
-      <td>${escapeHtml(col.name)}</td>
+      <td><strong>${escapeHtml(col.name)}</strong></td>
       <td>
         <span class="status-badge ${isPii ? "danger" : "success"}">
           ${isPii ? "PII" : "NO PII"}
         </span>
       </td>
-      <td>${probPct}%</td>
+      <td class="prob-cell">${probBar(probPct)}</td>
       <td>${escapeHtml(entity)}</td>
       <td>${entityPct}</td>
     `;
