@@ -4,6 +4,7 @@
 # Outputs (Flow): dataset_eval_holdout + folder mlflow_tmp (modelo MLflow)
 # + crea/actualiza programaticamente el Saved Model pii_lgbm_saved
 #   (MLFLOW_PYFUNC, BINARY_CLASSIFICATION, threshold operativo 0.75).
+# v2: wrapper PII-ONLY (sin entity) para que evaluate() binario pase limpio.
 # Requiere mlflow en el code env. CODE_ENV: verificar en Admin > Code envs.
 import json
 import os
@@ -40,7 +41,7 @@ model_dir = os.path.join(dataiku.Folder("mlflow_tmp").get_path(), "pii_model")
 shutil.rmtree(model_dir, ignore_errors=True)
 mlflow.pyfunc.save_model(
     path=model_dir,
-    python_model=PIIPyfunc(),
+    python_model=PIIPyfunc(with_entity=False),
     artifacts={
         "final_model": os.path.join(f5, "modelo.txt"),
         "vec_name": os.path.join(f5, "vec_name.pkl"),
@@ -92,5 +93,5 @@ try:
     ver.evaluate("dataset_eval_holdout")
     print("evaluate OK: revisar pestana Performance del Saved Model")
 except Exception as e:
-    print(f"WARN evaluate (si es por columnas extra -> contingencia 2 modelos): {e}")
+    print(f"WARN evaluate: {e} (revisar guarda de shapes en el log)")
 print("OK - verificar Saved Model pii_lgbm_saved en el Flow")

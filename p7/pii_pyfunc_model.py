@@ -34,6 +34,14 @@ def _norm_light(s) -> str:
     return re.sub(r"\s+", " ", _strip_accents(str(s).lower())).strip()
 
 
+def _check_width(X, booster, quien: str):
+    """Guarda diagnostica: matriz vs Booster (misterio 21151/2386)."""
+    esp = int(booster.num_feature())
+    if X.shape[1] != esp:
+        raise ValueError(
+            f"[{quien}] X.shape={tuple(X.shape)} vs booster.num_feature={esp}")
+
+
 def _softmax(scores: np.ndarray) -> np.ndarray:
     if scores.ndim == 1:
         scores = np.vstack([1 - scores, scores]).T
@@ -44,7 +52,11 @@ def _softmax(scores: np.ndarray) -> np.ndarray:
 
 
 class PIIPyfunc(_MLflowBase):
-    """Un unico Saved Model: PII binario (Fase 5) + entity Juez (Fase 2)."""
+    """Pipeline PII binario (Fase 5) + entity Juez opcional (Fase 2).
+    with_entity=False -> solo pii/prob_pii (apto para evaluate binario DSS)."""
+
+    def __init__(self, with_entity=True):
+        self.with_entity = with_entity
 
     def load_context(self, context):
         import lightgbm as lgb
@@ -86,14 +98,21 @@ class PIIPyfunc(_MLflowBase):
             fill_value=0).astype(np.int8).values
         num = np.vstack([longitud, np.zeros(len(df)), te]).T
         X = hstack([Xn, csr_matrix(num), csr_matrix(typ)]).tocsr()
+        _check_width(X, self.clf, "final")
         prob = np.asarray(self.clf.predict(X)).ravel()
         pii = prob >= self.threshold
+        if not self.with_entity:
+            return pd.DataFrame({
+                "pii": np.asarray(pii, dtype=bool),
+                "prob_pii": np.round(np.asarray(prob, dtype=float), 4),
+            })
         ent = [None] * len(df)
         pe = [float("nan")] * len(df)
         m = (key != "").to_numpy() & np.asarray(pii)
         if int(m.sum()):
             rows = np.where(m)[0]
             Xj = self.j_vec.transform(key.iloc[rows].tolist())
+            _check_width(Xj, self.j_bst, "juez")
             sj = _softmax(np.asarray(self.j_bst.predict(Xj)))
             idx = sj.argmax(axis=1)
             for k, i, v in zip(rows, idx, sj.max(axis=1)):
@@ -105,3 +124,36 @@ class PIIPyfunc(_MLflowBase):
             "entity": ent,
             "prob_entity": pe,
         })
+
+
+class JuezEntityModel(_MLflowBase):
+    """Saved Model 2 (MULTICLASS): solo entity/prob_entity desde name."""
+
+    def load_context(self, context):
+        import lightgbm as lgb
+
+        a = context.artifacts
+        with open(a["juez_vec"], "rb") as f:
+            self.j_vec = pickle.load(f)
+        with open(a["juez_clases"], encoding="utf-8") as f:
+            self.j_clases = json.load(f)
+        self.j_bst = lgb.Booster(model_file=a["juez_model"])
+
+    def predict(self, context, model_input):
+        df = model_input.copy()
+        if "name" not in df.columns:
+            raise ValueError("Falta columna 'name' en el input")
+        key = df["name"].map(_norm_light)
+        Xj = self.j_vec.transform(key.fillna("").tolist())
+        _check_width(Xj, self.j_bst, "juez")
+        sj = _softmax(np.asarray(self.j_bst.predict(Xj)))
+        idx = sj.argmax(axis=1)
+        ent, pe = [], []
+        for k, i, v in zip(range(len(df)), idx, sj.max(axis=1)):
+            if key.iloc[k] == "":
+                ent.append(None)
+                pe.append(float("nan"))
+            else:
+                ent.append(self.j_clases[int(i)])
+                pe.append(round(float(v), 4))
+        return pd.DataFrame({"entity": ent, "prob_entity": pe})
