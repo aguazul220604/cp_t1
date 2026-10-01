@@ -7,7 +7,6 @@ document
   .getElementById("btnGenerateCsv")
   .addEventListener("click", handleGenerateCsvClick);
 
-// ---- Mejoras UI: hint de archivos + drag & drop (no tocan la lógica de inferencia) ----
 const fileInput = document.getElementById("datasetFile");
 const fileHint = document.getElementById("fileHint");
 const dropZone = document.getElementById("dropZone");
