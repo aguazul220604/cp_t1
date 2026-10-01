@@ -128,8 +128,6 @@ function renderSummary(columns) {
 
     const tr = document.createElement("tr");
     if (isPii) tr.classList.add("pii-row");
-    tr.classList.add("row-enter");
-    tr.style.animationDelay = `${Math.min(i * 0.03, 0.6)}s`;
 
     tr.innerHTML = `
       <td>${escapeHtml(col.source_file || "")}</td>

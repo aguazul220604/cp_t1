@@ -7,184 +7,76 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <!-- Pantalla de Carga -->
     <div id="loadingSpinner" class="loading-overlay" aria-hidden="true">
-      <div class="spinner-ring">
-        <div class="spinner"></div>
-      </div>
-      <p class="loading-text">Analizando datos con el modelo LightGBM...</p>
-      <p class="loading-sub">Extrayendo features &middot; scoring PII &middot; clasificando entidad</p>
+      <div class="spinner"></div>
+      <p class="loading-text">Analizando...</p>
     </div>
 
-    <!-- Encabezado blanco -->
     <header class="header-banamex">
       <div class="header-inner">
-        <div class="brand">
-          <!-- Logo SVG inline -->
-          <span class="logo-wrap" aria-hidden="true">
-            <svg class="logo-svg" viewBox="0 0 64 64" role="img" aria-label="Banamex logo">
-              <defs>
-                <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stop-color="#E30613" />
-                  <stop offset="100%" stop-color="#A10115" />
-                </linearGradient>
-                <linearGradient id="logoShine" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#ffffff" stop-opacity="0.55" />
-                  <stop offset="45%" stop-color="#ffffff" stop-opacity="0" />
-                </linearGradient>
-              </defs>
-              <circle cx="32" cy="32" r="29" fill="url(#logoGrad)" />
-              <circle cx="32" cy="32" r="29" fill="none" stroke="#0A1931" stroke-opacity="0.25" stroke-width="1.5" />
-              <circle cx="32" cy="32" r="24.5" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="1.6" />
-              <!-- B estilizada -->
-              <path
-                d="M25 19 h11.5 c4.6 0 7.8 2.2 7.8 6.1 0 2.7-1.5 4.5-3.9 5.3 3.1.7 5 2.9 5 6.1 0 4.4-3.5 6.9-8.6 6.9 H25 V19 z M28.6 22.6 v7.4 h7.2 c2.6 0 4.1-1.3 4.1-3.7 0-2.4-1.6-3.7-4.1-3.7 h-7.2 z M28.6 33.4 v7.7 h7.9 c2.8 0 4.4-1.4 4.4-3.9 0-2.5-1.7-3.8-4.4-3.8 h-7.9 z"
-                fill="#ffffff" />
-              <ellipse cx="32" cy="32" rx="29" ry="13" fill="url(#logoShine)" opacity="0.35" />
-              <!-- destello -->
-              <circle cx="22.5" cy="20.5" r="2.2" fill="#ffffff" opacity="0.9" />
-            </svg>
-          </span>
-          <div class="brand-text">
-            <h1 class="brand-title">Banamex <span class="title-sep">|</span> <span class="title-accent">Core of Excellence and Machine Learning</span></h1>
-            <p class="brand-subtitle">
-              <span class="subtitle-dot"></span>
-              Detección e identificación de datos PII
-            </p>
-          </div>
-        </div>
-        <div class="header-meta">
-          <span class="model-pill" title="Motor de inferencia activo">
-            <span class="pulse-dot"></span>
-            LightGBM · v2 operativo
-          </span>
+        <span class="logo-wrap" aria-hidden="true">
+          <svg class="logo-svg" viewBox="0 0 64 64" role="img" aria-label="Banamex logo">
+            <circle cx="32" cy="32" r="29" fill="#D0021B" />
+            <circle cx="32" cy="32" r="24.5" fill="none" stroke="#ffffff" stroke-width="2" />
+            <path
+              d="M25 19 h11.5 c4.6 0 7.8 2.2 7.8 6.1 0 2.7-1.5 4.5-3.9 5.3 3.1.7 5 2.9 5 6.1 0 4.4-3.5 6.9-8.6 6.9 H25 V19 z M28.6 22.6 v7.4 h7.2 c2.6 0 4.1-1.3 4.1-3.7 0-2.4-1.6-3.7-4.1-3.7 h-7.2 z M28.6 33.4 v7.7 h7.9 c2.8 0 4.4-1.4 4.4-3.9 0-2.5-1.7-3.8-4.4-3.8 h-7.9 z"
+              fill="#ffffff" />
+          </svg>
+        </span>
+        <div class="brand-text">
+          <h1 class="brand-title">Banamex | Core of Excellence and Machine Learning</h1>
+          <p class="brand-subtitle">Detección e identificación de datos PII</p>
         </div>
       </div>
-      <div class="header-underline"></div>
     </header>
 
-    <!-- Hero azul oscuro -->
     <section class="hero">
-      <div class="hero-bg" aria-hidden="true">
-        <div class="hero-grid"></div>
-        <div class="orb orb-1"></div>
-        <div class="orb orb-2"></div>
-        <div class="orb orb-3"></div>
-      </div>
       <div class="hero-inner">
-        <div class="hero-copy">
-          <span class="hero-kicker"><span class="kicker-line"></span> Gobierno de datos · Privacidad by design</span>
-          <h2>Identifica datos sensibles <em>en segundos.</em></h2>
-          <p>Sube tu CSV o Excel y el modelo clasifica cada columna como <strong>PII / NO PII</strong> y predice su entidad — listo para auditar y exportar.</p>
-        </div>
-        <div class="hero-cards">
-          <div class="hero-stat">
-            <span class="stat-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6l7-3z"/><path d="M9.5 12l2 2 3.5-4"/></svg>
-            </span>
-            <span class="stat-value">PII + Entidad</span>
-            <span class="stat-label">Doble modelo en cascada</span>
-          </div>
-          <div class="hero-stat">
-            <span class="stat-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12L13 2z"/></svg>
-            </span>
-            <span class="stat-value">CSV · XLSX</span>
-            <span class="stat-label">Multi-archivo</span>
-          </div>
-          <div class="hero-stat">
-            <span class="stat-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
-            </span>
-            <span class="stat-value">Tiempo real</span>
-            <span class="stat-label">Scoring LightGBM</span>
-          </div>
-        </div>
+        <h2>Identifica datos sensibles en segundos.</h2>
       </div>
     </section>
 
     <div class="container">
-      <!-- Sección 1: Carga de Archivo -->
-      <section class="card card-upload reveal">
-        <div class="card-head">
-          <span class="step-badge">1</span>
-          <div>
-            <h3 class="card-title">Cargar Dataset o Tabla</h3>
-            <p class="card-desc">Arrastra tus archivos o selecciónalos. Aceptamos <code>.csv</code> y <code>.xlsx</code>.</p>
-          </div>
-        </div>
+      <section class="card">
+        <h3 class="card-title">Cargar dataset</h3>
         <div class="upload-box" id="dropZone">
           <label class="file-drop" for="datasetFile">
-            <span class="file-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
-                <path d="M12 16V4m0 0L7 9m5-5l5 5"/><path d="M4 16.5V19a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 19v-2.5"/>
-              </svg>
-            </span>
-            <span class="file-text"><strong>Haz clic para elegir archivos</strong> o arrástralos aquí</span>
-            <span class="file-hint" id="fileHint">Ningún archivo seleccionado</span>
+            <span id="fileHint">Ningún archivo seleccionado</span>
           </label>
           <input type="file" id="datasetFile" accept=".csv,.xlsx,.xls" multiple hidden />
-          <button id="btnProcess" class="btn-banamex">
-            <span class="btn-glow"></span>
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            Analizar PII
-          </button>
+          <button id="btnProcess" class="btn-banamex">Analizar PII</button>
         </div>
         <p id="uploadError" class="error-text" style="display: none"></p>
       </section>
 
-      <!-- Sección 2: Listado de Columnas con Predicción PII -->
-      <section id="piiSummarySection" class="card card-results" style="display: none">
-        <div class="card-head">
-          <span class="step-badge">2</span>
-          <div class="results-head-text">
-            <h3 class="card-title">Resultado del Análisis por Columna</h3>
-            <p class="card-desc" id="resultsMeta">— columnas analizadas</p>
-          </div>
-          <div class="legend">
-            <span class="legend-item"><span class="legend-dot danger"></span> PII</span>
-            <span class="legend-item"><span class="legend-dot success"></span> NO PII</span>
-          </div>
+      <section id="piiSummarySection" class="card" style="display: none">
+        <h3 class="card-title">Resultado por columna</h3>
+        <div class="table-responsive">
+          <table id="piiTable">
+            <thead>
+              <tr>
+                <th>Archivo</th>
+                <th>Columna</th>
+                <th>Predicción</th>
+                <th>Prob. PII</th>
+                <th>Entidad</th>
+                <th>Prob. Entidad</th>
+              </tr>
+            </thead>
+            <tbody id="piiListBody"></tbody>
+          </table>
         </div>
-        <div class="table-shell">
-          <div class="table-responsive">
-            <table id="piiTable">
-              <thead>
-                <tr>
-                  <th>Archivo</th>
-                  <th>Nombre de Columna</th>
-                  <th>Predicción</th>
-                  <th>Probabilidad PII</th>
-                  <th>Entidad</th>
-                  <th>Prob. Entidad</th>
-                </tr>
-              </thead>
-              <tbody id="piiListBody">
-                <!-- Filas dinámicas -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-
         <div class="confirm-box">
-          <span class="confirm-hint">Revisa el análisis y exporta la evidencia.</span>
-          <button id="btnGenerateCsv" class="btn-banamex btn-confirm">
-            <span class="btn-glow"></span>
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 19v-2"/></svg>
-            Confirmar y Generar CSV
-          </button>
+          <button id="btnGenerateCsv" class="btn-banamex">Generar CSV</button>
         </div>
       </section>
 
       <footer class="foot">
-        <span>Banamex · Core of Excellence and Machine Learning</span>
-        <span class="foot-sep">·</span>
-        <span>Detección e identificación de datos PII</span>
+        <span>Banamex · Detección de datos PII</span>
       </footer>
     </div>
 
     <script>
-      // Fallback para Dataiku: si el runtime ya define getWebAppBackendUrl, se respeta.
       if (typeof getWebAppBackendUrl === "undefined") {
         function getWebAppBackendUrl(path) {
           return path;
