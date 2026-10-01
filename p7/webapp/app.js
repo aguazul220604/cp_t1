@@ -102,12 +102,8 @@ function handleProcessClick() {
     });
 }
 
-function probBar(pct) {
-  const level = pct >= 75 ? "high" : "";
-  return `<span class="prob-wrap">
-    <span class="prob-bar"><span class="prob-fill ${level}" style="width:${pct.toFixed(1)}%"></span></span>
-    <span class="prob-num">${pct.toFixed(2)}%</span>
-  </span>`;
+function probText(pct) {
+  return '<span class="prob-num">' + pct.toFixed(2) + '%</span>';
 }
 
 function renderSummary(columns) {
@@ -143,7 +139,7 @@ function renderSummary(columns) {
           ${isPii ? "PII" : "NO PII"}
         </span>
       </td>
-      <td class="prob-cell">${probBar(probPct)}</td>
+      <td class="prob-cell">${probText(probPct)}</td>
       <td>${escapeHtml(entity)}</td>
       <td>${entityPct}</td>
     `;
