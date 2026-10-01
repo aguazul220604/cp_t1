@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Detector PII - Banamex</title>
+  </head>
+  <body>
+    <!-- Pantalla de Carga -->
+    <div id="loadingSpinner" class="loading-overlay">
+      <div class="spinner"></div>
+      <p class="loading-text">Analizando datos con el modelo LightGBM...</p>
+    </div>
+
+    <!-- Encabezado -->
+    <header class="header-banamex">
+      <h2>Detección e Identificación de Datos PII</h2>
+      <span class="badge-tag">Banamex Data Governance</span>
+    </header>
+
+    <div class="container">
+      <!-- Sección 1: Carga de Archivo -->
+      <section class="card">
+        <h3 class="card-title">1. Cargar Dataset o Tabla</h3>
+        <div class="upload-box">
+          <input type="file" id="datasetFile" accept=".csv, .xlsx" multiple />
+          <button id="btnProcess" class="btn-banamex">Analizar PII</button>
+        </div>
+        <p id="uploadError" class="error-text" style="display: none"></p>
+      </section>
+
+      <!-- Sección 2: Listado de Columnas con Predicción PII -->
+      <section id="piiSummarySection" class="card" style="display: none">
+        <h3 class="card-title">2. Resultado del Análisis por Columna</h3>
+        <div class="table-responsive">
+          <table id="piiTable">
+            <thead>
+              <tr>
+                <th>Archivo</th>
+                <th>Nombre de Columna</th>
+                <th>Predicción</th>
+                <th>Probabilidad PII</th>
+                <th>Entidad</th>
+                <th>Prob. Entidad</th>
+              </tr>
+            </thead>
+            <tbody id="piiListBody">
+              <!-- Filas dinámicas -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="confirm-box">
+          <button id="btnGenerateCsv" class="btn-banamex btn-confirm">
+            Confirmar y Generar CSV
+          </button>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,233 @@
+:root {
+  --banamex-red: #d0021b;
+  --banamex-red-dark: #a10115;
+  --gray-bg: #f4f5f7;
+  --gray-border: #e0e2e6;
+  --text-dark: #333333;
+  --text-muted: #666666;
+  --success-bg: #e6f6ec;
+  --success-text: #1e7e34;
+  --danger-bg: #fdecea;
+  --danger-text: #c0392b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background-color: var(--gray-bg);
+  color: var(--text-dark);
+}
+
+/* ---------- Encabezado ---------- */
+.header-banamex {
+  background-color: var(--banamex-red);
+  color: #ffffff;
+  padding: 20px 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.header-banamex h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.badge-tag {
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+
+/* ---------- Layout general ---------- */
+.container {
+  max-width: 960px;
+  margin: 24px auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.card {
+  background-color: #ffffff;
+  border: 1px solid var(--gray-border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.card-title {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+/* ---------- Sección de carga ---------- */
+.upload-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+input[type="file"] {
+  border: 1px dashed var(--gray-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.btn-banamex {
+  background-color: var(--banamex-red);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.btn-banamex:hover {
+  background-color: var(--banamex-red-dark);
+}
+
+.btn-banamex:active {
+  transform: translateY(1px);
+}
+
+.error-text {
+  margin: 12px 0 0 0;
+  color: var(--danger-text);
+  font-size: 13px;
+}
+
+/* ---------- Tabla de resultados ---------- */
+.table-responsive {
+  overflow-x: auto;
+}
+
+#piiTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+#piiTable thead th {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--gray-border);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+#piiTable tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--gray-border);
+  vertical-align: middle;
+}
+
+#piiTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Fila resaltada cuando la columna se detectó como PII */
+#piiTable tbody tr.pii-row {
+  background-color: var(--danger-bg);
+}
+
+#piiTable tbody tr.pii-row td:first-child {
+  border-left: 3px solid var(--danger-text);
+}
+
+/* ---------- Badges de estado ---------- */
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-badge.danger {
+  background-color: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.status-badge.success {
+  background-color: var(--success-bg);
+  color: var(--success-text);
+}
+
+/* ---------- Botón de confirmar / generar CSV ---------- */
+.confirm-box {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-confirm {
+  background-color: var(--success-text);
+}
+
+.btn-confirm:hover {
+  background-color: #17652b;
+}
+
+/* ---------- Spinner de carga ---------- */
+.loading-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background-color: rgba(255, 255, 255, 0.85);
+  z-index: 1000;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 5px solid var(--gray-border);
+  border-top-color: var(--banamex-red);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+  margin-top: 15px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.warning-text {
+  margin: 12px 0 0 0;
+  color: #8a6d00;
+  font-size: 13px;
+}
