@@ -1,13 +1,11 @@
 # Dataiku Python recipe: fase2b_mineria_267k
 # REGLA DE ORO: lee SOLO la columna `name` del 267k. Ignora sus etiquetas.
-# In (Flow):  dataset_no_validated (o nombre de tu 267k) — se usa solo `name`
-# Out (Flow): variantes_lexicas_267k (csvs/dataset con separadores, abreviaturas, calificadores observados)
-#             + managed folder o dataset con diccionario JSON de operadores permitidos
-#
-# Local: python recipe_fase2b_mineria_267k.py --input 267k.csv --output variantes_lexicas_267k.csv --dict operadores.json
+# In (Flow): dataset_no_validated — se usa solo `name`
+# Out (Flow): variantes_lexicas_267k (dataset) + managed folder (fase2b_lexico) con JSON
 import argparse
 import json
 import re
+import pandas as pd
 
 try:
     import dataiku
@@ -15,17 +13,11 @@ try:
 except ImportError:
     HAS_DATAIKU = False
 
-import pandas as pd
-
 IN_DATASET = "dataset_no_validated"
 OUT_DATASET = "variantes_lexicas_267k"
-# Managed folder Dataiku donde queda el JSON de operadores permitidos.
-# Crealo una vez en el Flow: + New > Folder > nombre `fase2b_lexico` (ID = fase2b_lexico).
 OUT_FOLDER = "fase2b_lexico"
 OUT_JSON_NAME = "operadores_permitidos.json"
 
-# Familias del doc v2 §Fase 2b — solo estas raices pueden usarse como operador en 2c.
-# La mineria confirma cuales SI se observaron en el 267k.
 FAMILIAS = {
     "correo": ["correo", "mail", "e-mail", "email", "e_mail"],
     "rfc": ["rfc", "r.f.c.", "idfiscal", "id_fiscal"],
@@ -47,15 +39,14 @@ CALIFICADORES = ["titular", "cliente", "beneficiario", "subc", "ordenante", "sub
 
 def detectar_separadores(names: pd.Series) -> dict:
     s = names.fillna("").astype(str)
-    n = max(len(s), 1)
     return {
-        "underscore": float(s.str.contains("_").mean()),
-        "guion": float(s.str.contains("-").mean()),
-        "espacio": float(s.str.contains(" ").mean()),
-        "punto": float(s.str.contains(r"\.").mean()),
-        "sin_sep": float((~s.str.contains(r"[_\- .]")).mean()),
-        "camel": float(s.str.contains(r"[a-z][A-Z]").mean()),
-        "mayusculas_full": float(s.str.contains(r"^[A-Z0-9 _\-/\.]+$").fillna(False).mean()),
+        "underscore": float(s.str.contains("_", regex=False).mean()),
+        "guion": float(s.str.contains("-", regex=False).mean()),
+        "espacio": float(s.str.contains(" ", regex=False).mean()),
+        "punto": float(s.str.contains(r"\.", regex=True).mean()),
+        "sin_sep": float((~s.str.contains(r"[_\- .]", regex=True)).mean()),
+        "camel": float(s.str.contains(r"[a-z][A-Z]", regex=True).mean()),
+        "mayusculas_full": float(s.str.contains(r"^[A-Z0-9 _\-/\.]+$", regex=True).fillna(False).mean()),
         "n": int(len(s)),
     }
 
@@ -78,7 +69,7 @@ def minar_calificadores(names: pd.Series) -> pd.DataFrame:
     low = names.fillna("").astype(str).str.lower()
     rows = []
     for c in CALIFICADORES:
-        cnt = int(low.str.contains(re.escape(c)).sum())
+        cnt = int(low.str.contains(re.escape(c), regex=True).sum())
         if cnt > 0:
             rows.append({"calificador": c, "n_obs": cnt})
     if not rows:
@@ -86,64 +77,67 @@ def minar_calificadores(names: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("n_obs", ascending=False).reset_index(drop=True)
 
 
+def procesar_datos(names: pd.Series):
+    sep = detectar_separadores(names)
+    fam = minar_familias(names)
+    cal = minar_calificadores(names)
+
+    fam_out = fam.rename(columns={"familia": "tipo", "variante": "valor"})[["tipo", "valor", "n_obs"]]
+    cal_out = cal.rename(columns={"calificador": "valor"}).assign(tipo="calificador")[["tipo", "valor", "n_obs"]]
+    
+    sep_out = pd.DataFrame([
+        {"tipo": "separador", "valor": k, "n_obs": int(round(v * len(names))) if k != "n" else v}
+        for k, v in sep.items() if k != "n"
+    ])[["tipo", "valor", "n_obs"]]
+
+    out = pd.concat([fam_out, cal_out, sep_out], ignore_index=True)
+    payload = {
+        "separadores": sep,
+        "familias_observadas": fam.to_dict("records"),
+        "calificadores_observados": cal.to_dict("records")
+    }
+    return out, payload, sep, fam, cal
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", default="267k.csv")
     ap.add_argument("--output", default="variantes_lexicas_267k.csv")
     ap.add_argument("--dict", default="operadores.json", dest="dict_path")
-    a = ap.parse_args()
+    a, _ = ap.parse_known_args()
 
     if HAS_DATAIKU:
-        try:
-            df = dataiku.Dataset(IN_DATASET).get_dataframe()
-            # SOLO texto: ignora cualquier label aunque exista
-            names = df["name"] if "name" in df.columns else df.iloc[:, 0]
-            sep = detectar_separadores(names)
-            fam = minar_familias(names)
-            cal = minar_calificadores(names)
-            # Dataset salida: una tabla larga de evidencia observada
-            fam_out = fam.rename(columns={"familia": "tipo", "variante": "valor"})
-            cal_out = cal.rename(columns={"calificador": "valor"}).assign(tipo="calificador")
-            sep_out = pd.DataFrame([{"tipo": "separador", "valor": k, "n_obs": round(v * len(names)) if k != "n" else v}
-                                    for k, v in sep.items() if k != "n"])
-            out = pd.concat([fam_out, cal_out, sep_out], ignore_index=True)
-            dataiku.Dataset(OUT_DATASET).write_with_schema(out)
-            # JSON de operadores -> managed folder (misma recipe, segundo output).
-            # En el Flow: selecciona la recipe > Settings > Outputs > + Add > Folder `fase2b_lexico`.
-            payload = {"separadores": sep, "familias_observadas": fam.to_dict("records"),
-                       "calificadores_observados": cal.to_dict("records")}
-            try:
-                folder = dataiku.Folder(OUT_FOLDER)
-                with folder.get_writer(OUT_JSON_NAME) as w:
-                    w.write(json.dumps(payload, ensure_ascii=False, indent=2))
-                print(f"JSON escrito en folder '{OUT_FOLDER}/{OUT_JSON_NAME}'")
-            except Exception as fe:
-                # Si el folder aun no esta enlazado como output, no tumbar la recipe:
-                # imprime el JSON para pegarlo manual en el folder.
-                print(f"AVISO: no se pudo escribir en folder '{OUT_FOLDER}' ({fe}). "
-                      f"Crea el managed folder y enlazalo como output, o guarda manual este JSON "
-                      f"como '{OUT_JSON_NAME}':\n{json.dumps(payload, ensure_ascii=False, indent=2)}")
-            print(f"OK 2b: {len(names)} names, {len(fam)} variantes familia, "
-                  f"{len(cal)} calificadores, seps={ {k: round(v,3) for k,v in sep.items() if k!='n'} }")
-            print("SOLO se observaron las variantes listadas: cualquier operador de 2c fuera de esta lista esta PROHIBIDO.")
-            return
-        except Exception as e:
-            print(f"Dataiku no disponible ({e}), modo local.")
+        # --- Modo Dataiku DSS ---
+        df = dataiku.Dataset(IN_DATASET).get_dataframe()
+        names = df["name"] if "name" in df.columns else df.iloc[:, 0]
+        
+        out, payload, sep, fam, cal = procesar_datos(names)
 
+        # 1. Guardar Dataset en el Flow
+        dataiku.Dataset(OUT_DATASET).write_with_schema(out)
+
+        # 2. Guardar JSON en Managed Folder
+        try:
+            folder = dataiku.Folder(OUT_FOLDER)
+            json_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            folder.upload_data(OUT_JSON_NAME, json_bytes)
+            print(f"JSON escrito correctamente en folder '{OUT_FOLDER}/{OUT_JSON_NAME}'")
+        except Exception as fe:
+            print(f"AVISO: no se pudo escribir en folder '{OUT_FOLDER}' ({fe}). "
+                  f"Asegurate de crear el Managed Folder en el Flow y enlazarlo como Output de esta recipe.")
+
+        print(f"OK 2b (Dataiku): {len(names)} names, {len(fam)} variantes familia, "
+              f"{len(cal)} calificadores, seps={ {k: round(v, 3) for k, v in sep.items() if k != 'n'} }")
+        return
+
+    # --- Modo ejecucion Local ---
     df = pd.read_csv(a.input)
     names = df["name"] if "name" in df.columns else df.iloc[:, 0]
-    sep = detectar_separadores(names)
-    fam = minar_familias(names)
-    cal = minar_calificadores(names)
-    fam_out = fam.rename(columns={"familia": "tipo", "variante": "valor"})
-    cal_out = cal.rename(columns={"calificador": "valor"}).assign(tipo="calificador")
-    sep_out = pd.DataFrame([{"tipo": "separador", "valor": k, "n_obs": round(v * len(names)) if k != "n" else v}
-                            for k, v in sep.items() if k != "n"])
-    out = pd.concat([fam_out, cal_out, sep_out], ignore_index=True)
+    out, payload, sep, fam, cal = procesar_datos(names)
+
     out.to_csv(a.output, index=False)
     with open(a.dict_path, "w", encoding="utf-8") as f:
-        json.dump({"separadores": sep, "familias_observadas": fam.to_dict("records"),
-                   "calificadores_observados": cal.to_dict("records")}, f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     print(f"OK 2b local: -> {a.output}, {a.dict_path}")
 
 
