@@ -14,20 +14,31 @@ import argparse
 import random
 import re
 
+import pandas as pd
+
 try:
     import dataiku
     HAS_DATAIKU = True
 except ImportError:
     HAS_DATAIKU = False
 
-import pandas as pd
-
-from lib_fase2_normalize import (
-    ENTIDADES_CERO_TYPOS, TIER_1_SIN_SINTETICOS, normalize_name,
-)
+try:
+    # DSS Library Editor: pii_lib_v3 > normalize_v3.py
+    from pii_lib_v3.normalize_v3 import (
+        ENTIDADES_CERO_TYPOS, TIER_1_SIN_SINTETICOS, normalize_name,
+    )
+except ImportError:
+    # Local
+    from lib_fase2_normalize import (
+        ENTIDADES_CERO_TYPOS, TIER_1_SIN_SINTETICOS, normalize_name,
+    )
 
 IN_NORM = "dataset_validated_norm"
-IN_VAR = "variantes_lexicas_267k"
+# NOTA: variantes_lexicas_267k NO se lee como input en esta recipe.
+# ABBREV_MAP ya esta restringido al diccionario permitido de Fase 2b.
+# Si quieres validarlo contra el dataset, enlaza el dataset como 2do input
+# y filtra; por defecto no se exige para no bloquear el build.
+IN_VAR_OPTIONAL = "variantes_lexicas_267k"
 OUT_AUG = "aug_train_only"
 CAP = 30
 SEED = 42
@@ -157,24 +168,23 @@ def build_aug(df_norm: pd.DataFrame, cap: int = CAP, seed: int = SEED) -> pd.Dat
 
 
 def main():
+    # 1. MODO DATAIKU: sin argparse (el wrapper DSS trae sus propios flags).
+    if HAS_DATAIKU:
+        df = dataiku.Dataset(IN_NORM).get_dataframe()
+        aug = build_aug(df, CAP, SEED)
+        dataiku.Dataset(OUT_AUG).write_with_schema(aug)
+        print(f"OK 2c: {len(aug)} sinteticos (<1.5% del 21k esperado ~280-300). "
+              f"Por entidad: {aug['entity'].value_counts().to_dict() if len(aug) else {}}")
+        print("RECORDATORIO: aug solo en train, agrupado por parent_norm, excluido de val/calibracion/umbral.")
+        return
+
+    # 2. MODO LOCAL: solo aqui se usa argparse.
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", default="norm.csv")
     ap.add_argument("--output", default="aug.csv")
     ap.add_argument("--cap", type=int, default=CAP)
     ap.add_argument("--seed", type=int, default=SEED)
-    a = ap.parse_args()
-
-    if HAS_DATAIKU:
-        try:
-            df = dataiku.Dataset(IN_NORM).get_dataframe()
-            aug = build_aug(df, a.cap, a.seed)
-            dataiku.Dataset(OUT_AUG).write_with_schema(aug)
-            print(f"OK 2c: {len(aug)} sinteticos (<1.5% del 21k esperado ~280-300). "
-                  f"Por entidad: {aug['entity'].value_counts().to_dict() if len(aug) else {}}")
-            print("RECORDATORIO: aug solo en train, agrupado por parent_norm, excluido de val/calibracion/umbral.")
-            return
-        except Exception as e:
-            print(f"Dataiku no disponible ({e}), modo local.")
+    a, _ = ap.parse_known_args()
 
     df = pd.read_csv(a.input)
     aug = build_aug(df, a.cap, a.seed)

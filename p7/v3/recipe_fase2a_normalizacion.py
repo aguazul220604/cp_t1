@@ -8,18 +8,26 @@
 # Local: python recipe_fase2a_normalizacion.py --input labeled.csv --output norm.csv --deficit deficit.csv
 import argparse
 
+import pandas as pd
+
 try:
     import dataiku
     HAS_DATAIKU = True
 except ImportError:
     HAS_DATAIKU = False
 
-import pandas as pd
-
-from lib_fase2_normalize import (
-    TIER_1_SIN_SINTETICOS, TIER_2_REFUERZO, TIER_3_COMPLETO,
-    normalize_name, parse_pii,
-)
+try:
+    # DSS Library Editor: pii_lib_v3 > normalize_v3.py
+    from pii_lib_v3.normalize_v3 import (
+        TIER_1_SIN_SINTETICOS, TIER_2_REFUERZO, TIER_3_COMPLETO,
+        normalize_name, parse_pii,
+    )
+except ImportError:
+    # Local
+    from lib_fase2_normalize import (
+        TIER_1_SIN_SINTETICOS, TIER_2_REFUERZO, TIER_3_COMPLETO,
+        normalize_name, parse_pii,
+    )
 
 IN_DATASET = "dataset_validated_labeled"
 OUT_DATASET = "dataset_validated_norm"
@@ -72,24 +80,30 @@ def build_deficit(df: pd.DataFrame, cap: int = CAP) -> pd.DataFrame:
 
 
 def main():
+    # 1. MODO DATAIKU: sin argparse (el wrapper DSS trae sus propios flags).
+    if HAS_DATAIKU:
+        df = dataiku.Dataset(IN_DATASET).get_dataframe()
+        norm = build_norm(df)
+        dataiku.Dataset(OUT_DATASET).write_with_schema(
+            norm.drop(columns=["_is_pii"], errors="ignore"))
+        # 2do output opcional: si no esta enlazado en el Flow, no tumbar la recipe.
+        try:
+            dataiku.Dataset(OUT_DEFICIT).write_with_schema(
+                build_deficit(norm, CAP))
+        except Exception as fe:
+            print(f"AVISO: no se pudo escribir '{OUT_DEFICIT}' ({fe}). "
+                  f"Enlázalo en Settings > Outputs o ignora este aviso.")
+        print(f"OK 2a: {len(norm)} filas, PII={int(norm['_is_pii'].sum())}, "
+              f"norm_distintos={norm['name_norm'].nunique()}")
+        return
+
+    # 2. MODO LOCAL: solo aqui se usa argparse.
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", default="labeled.csv")
     ap.add_argument("--output", default="norm.csv")
     ap.add_argument("--deficit", default="deficit.csv")
     ap.add_argument("--cap", type=int, default=CAP)
-    a = ap.parse_args()
-
-    if HAS_DATAIKU:
-        try:
-            df = dataiku.Dataset(IN_DATASET).get_dataframe()
-            norm = build_norm(df)
-            dataiku.Dataset(OUT_DATASET).write_with_schema(norm.drop(columns=["_is_pii"], errors="ignore"))
-            dataiku.Dataset(OUT_DEFICIT).write_with_schema(build_deficit(norm, a.cap))
-            print(f"OK 2a: {len(norm)} filas, PII={int(norm['_is_pii'].sum())}, "
-                  f"norm_distintos={norm['name_norm'].nunique()}")
-            return
-        except Exception as e:
-            print(f"Dataiku no disponible ({e}), modo local.")
+    a, _ = ap.parse_known_args()
 
     df = pd.read_csv(a.input)
     norm = build_norm(df)
