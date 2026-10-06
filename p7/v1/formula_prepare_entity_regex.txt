@@ -1,0 +1,23 @@
+FORMULA PARA DATAIKU PREPARE RECIPE — Columna: entity (fallback null)
+Pegar en: Add a new step > Create column entity with formula
+================================================================
+
+if(length(match(toLowercase(name), ".*(nss|seguridad_imss|seg_social|imss).*")) > 0, "nss",
+if(length(match(toLowercase(name), ".*(fnac|fnacim|nacim|birth|dob|fecha_nac|fechanac).*")) > 0
+   AND length(match(toLowercase(name), ".*(venc|expira|expiry|vigencia).*")) == 0, "fecha_nacimiento",
+if(length(match(toLowercase(name), ".*(apellido|ap_paterno|ap_materno|paterno|materno|surname|last_name).*")) > 0, "apellido",
+if(length(match(toLowercase(name), ".*(acta|poder_notarial|escritura|notaria|amparo|demanda|pasaporte|licencia|cedula_prof|cartilla|creactecto|actacons).*")) > 0, "documento_legal",
+if(length(match(toLowercase(name), ".*(soeid|geid|password|passwd|pwd|token|auth|login|credencial|firma_elec|efirma|tok_req|dispositivo|medio_acceso).*")) > 0, "credenciales_id",
+if(length(match(toLowercase(name), ".*(numdepend|dependientes|ocupacion|ptrmadre|indicador_extranjero|estado_civil|ecivil|nacionalidad|demograf|marginacion|escolaridad).*")) > 0, "datos_demograficos",
+if(length(match(toLowercase(name), ".*(inmueble|patrimonio|hipoteca|avaluo|predial|vehiculo|propiedad).*")) > 0, "bienes_patrimonio",
+null)))))))
+
+================================================================
+NOTAS:
+- Una sola linea tambien funciona; aqui con saltos para lectura.
+- Siempre toLowercase(name): corrige AP PATERNO en mayusculas.
+- Sin "|ap|" suelto: evita que capital/apertura caigan a apellido.
+- fecha_nacimiento exige NO contener venc/expira/expiry/vigencia.
+- Fallback null (no otro_pii en bloque): lo no matcheado queda
+  vacio para revision manual y NO entra a gold_v2.
+- No usa columna pii (pool_labeling_round_1 no la trae).
