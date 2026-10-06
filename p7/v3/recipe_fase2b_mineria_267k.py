@@ -100,23 +100,17 @@ def procesar_datos(names: pd.Series):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--input", default="267k.csv")
-    ap.add_argument("--output", default="variantes_lexicas_267k.csv")
-    ap.add_argument("--dict", default="operadores.json", dest="dict_path")
-    a, _ = ap.parse_known_args()
-
+    # 1. MODO DATAIKU: Se ejecuta primero para evitar la lectura de argumentos CLI (argparse)
     if HAS_DATAIKU:
-        # --- Modo Dataiku DSS ---
         df = dataiku.Dataset(IN_DATASET).get_dataframe()
         names = df["name"] if "name" in df.columns else df.iloc[:, 0]
         
         out, payload, sep, fam, cal = procesar_datos(names)
 
-        # 1. Guardar Dataset en el Flow
+        # Escribir Dataset de salida en el Flow
         dataiku.Dataset(OUT_DATASET).write_with_schema(out)
 
-        # 2. Guardar JSON en Managed Folder
+        # Escribir JSON en el Managed Folder mediante upload_data
         try:
             folder = dataiku.Folder(OUT_FOLDER)
             json_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
@@ -124,13 +118,19 @@ def main():
             print(f"JSON escrito correctamente en folder '{OUT_FOLDER}/{OUT_JSON_NAME}'")
         except Exception as fe:
             print(f"AVISO: no se pudo escribir en folder '{OUT_FOLDER}' ({fe}). "
-                  f"Asegurate de crear el Managed Folder en el Flow y enlazarlo como Output de esta recipe.")
+                  f"Asegúrate de crear el Managed Folder en el Flow y enlazarlo como Output de esta recipe.")
 
         print(f"OK 2b (Dataiku): {len(names)} names, {len(fam)} variantes familia, "
               f"{len(cal)} calificadores, seps={ {k: round(v, 3) for k, v in sep.items() if k != 'n'} }")
         return
 
-    # --- Modo ejecucion Local ---
+    # 2. MODO LOCAL: Solo se ejecuta en terminal local fuera de Dataiku
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--input", default="267k.csv")
+    ap.add_argument("--output", default="variantes_lexicas_267k.csv")
+    ap.add_argument("--dict", default="operadores.json", dest="dict_path")
+    a, _ = ap.parse_known_args()
+
     df = pd.read_csv(a.input)
     names = df["name"] if "name" in df.columns else df.iloc[:, 0]
     out, payload, sep, fam, cal = procesar_datos(names)
