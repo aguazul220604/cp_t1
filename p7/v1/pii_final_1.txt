@@ -1,0 +1,105 @@
+# Proyecto: Identificador Automático de Datos PII mediante Machine Learning (Banamex / Dataiku)
+
+## 1. Descripción del Proyecto
+El objetivo principal de este proyecto es desarrollar una solución automatizada dentro de **Dataiku DSS** para auditar y detectar información de identificación personal (**PII** - *Personally Identifiable Information*) en los esquemas de bases de datos de Banamex[cite: 1].
+
+La evaluación se realiza a nivel de columna sobre cualquier tabla candidata, utilizando como insumo principal el nombre de la columna (`name`)[cite: 1, 2]. 
+
+### Formato de Inferencia Esperado
+Para cada columna analizada, el sistema genera como resultado de salida un esquema con cuatro variables[cite: 1, 2]:
+* **`pii`** *(Booleano)*: Indica si la columna se clasifica como PII (`TRUE`) o No-PII (`FALSE`)[cite: 1, 2].
+* **`prob_pii`** *(Float)*: Probabilidad o nivel de certeza del modelo de que la columna sea PII (entre 0.0 y 1.0)[cite: 1, 2].
+* **`entity`** *(String)*: Tipo específico de entidad detectada (ej. `EMAIL`, `TELEFONO`, `CLIENTE_ID`, `RFC`, `N/A`)[cite: 1].
+* **`prob_entity`** *(Float)*: Probabilidad del modelo al clasificar la entidad específica[cite: 1].
+
+---
+
+## 2. Insumos y Datasets Disponibles
+
+| Dataset | Registros | Distribución PII / No-PII | Rol en el Proyecto |
+| :--- | :--- | :--- | :--- |
+| **`dataset_validated_prepared`**[cite: 1] | ~21,000[cite: 1] | 96% No-PII / 4% PII[cite: 1] | **Dataset Principal de Entrenamiento y Evaluación.** Validado formalmente por Data Security[cite: 1]. Incluye la columna manual de entidades (`entity`)[cite: 1]. |
+| **`dataset_no_validated_prepared`**[cite: 2] | ~267,000[cite: 2] | 44% No-PII / 56% PII[cite: 2] | **Dataset Secundario / Auxiliar.** Proveniente de Metadata Hub[cite: 2]. Utilizado para enriquecer el vocabulario TF-IDF y apoyar la taxonomía[cite: 2]. |
+
+---
+
+## 3. Arquitectura de Inferencia en Dos Etapas
+
+Para maximizar la precisión y separar la detección binaria de la categorización multiclase, se adopta un enfoque jerárquico secuencial:
+
+              [ Nombre de Columna ('name') ]
+                            │
+                            ▼
+               ┌──────────────────────────┐
+               │   ETAPA 1: Modelo PII    │
+               │    (PII vs No-PII)       │
+               └────────────┬─────────────┘
+                            │
+               Probabilidad (prob_pii)
+                            │
+       ┌────────────────────┴────────────────────┐
+       ▼                                         ▼
+prob_pii >= 0.75                           prob_pii < 0.75
+(Clasificado como PII)                     (Clasificado como No-PII)
+│                                         │
+▼                                         ▼
+┌──────────────────────────┐               ┌──────────────────┐
+│   ETAPA 2: Modelo Entidad│               │ pii: FALSE       │
+│  (Clasificación Multiclase)│               │ prob_pii: val    │
+└──────────┬───────────────┘               │ entity: "N/A"    │
+│                               │ prob_entity: 1 - prob_pii
+▼                               └──────────────────┘
+┌──────────────────────────┐
+│ pii: TRUE                │
+│ prob_pii: val            │
+│ entity: │
+│ prob_entity: val_clase   │
+└──────────────────────────┘
+
+
+### Reglas de Decisión y Umbral (*Threshold*)
+1. **Umbral Operativo de PII (75%):** Una columna se clasifica como `pii = TRUE` únicamente si la probabilidad asignada por el modelo de la Etapa 1 es igual o mayor a **0.75** (`prob_pii >= 0.75`).
+2. **Asignación de Entidad:**
+   * Si `pii = TRUE`: Se invoca el modelo multiclase de la **Etapa 2**, asignando la clase con mayor probabilidad y registrando dicho valor en `prob_entity`.
+   * Si `pii = FALSE`: La columna `entity` toma el valor predeterminado de `"N/A"` y `prob_entity` refleja el complemento de la probabilidad de PII (`1 - prob_pii`).
+
+---
+
+## 4. Etapas de Ejecución del Proyecto
+
+### **Etapa 1: Enriquecimiento de Datos y Etiquetado Manual (`entity`)**
+* **Acción:** Completar la taxonomía de la columna `entity` en los ~840 registros clasificados como PII (`pii = TRUE`) dentro de `dataset_validated_prepared`[cite: 1].
+* **Estandarización:** Definir una lista cerrada de clases de entidad (ej. `EMAIL`, `TELEFONO`, `IDENTIFICADOR_CLIENTE`, `RFC`, `CURP`, `DIRECCION`, `FECHA_NACIMIENTO`)[cite: 1].
+* **Apoyo Auxiliar:** Utilizar el `dataset_no_validated_prepared` de forma pasiva para consultar variaciones comunes de nombres de columna de cada categoría[cite: 2].
+
+### **Etapa 2: Ingeniería de Variables (*Feature Engineering*) para Nombres de Columnas**
+Dado que en producción la evaluación se enfocará solo en el nombre de la columna[cite: 1, 2]:
+* **Limpieza y Normalización:**
+  * Conversión de cadenas a minúsculas y eliminación de espacios en blanco/caracteres especiales.
+  * Mapeo de secuencias numéricas a tokens neutros (ej. `telcasa1` -> `telcasa<num>`).
+* **Representación en N-gramas de Caracteres (Char N-Grams):**
+  * Extracción de patrones con TF-IDF a nivel de caracteres (rango de n-gramas de 3 a 5).
+  * Esta técnica permite capturar subpalabras y abreviaturas típicas bancarias (ej. `num`, `cli`, `fec`, `alt`, `mail`, `tel`)[cite: 1, 2], incluso si están concatenadas sin separadores[cite: 1, 2].
+* **Enriquecimiento del Vocabulario:** Se ajusta el vectorizador TF-IDF combinando los nombres de columna del dataset validado y el secundario para abarcar un léxico más amplio[cite: 1, 2].
+
+### **Etapa 3: Entrenamiento y Ajuste de Modelos (100% Código Python)**
+* **Manejo del Desbalance:** Puesto que el dataset validado cuenta con un 96% de ejemplos No-PII y solo un 4% de PII[cite: 1], se aplican ponderaciones de pesos balanceados (`class_weight='balanced'`) en los clasificadores[cite: 1].
+* **Modelo Etapa 1 (Clasificador PII):**
+  * Entrenado sobre los 21k registros de `dataset_validated_prepared`[cite: 1].
+  * Modelos candidatos: *Logistic Regression* con regularización L2 / *LightGBM*.
+* **Modelo Etapa 2 (Clasificador Multiclase de Entidades):**
+  * Entrenado exclusivamente sobre el subconjunto de registros etiquetados como PII[cite: 1].
+  * Modelos candidatos: *LightGBM Classifier* / *Random Forest*.
+
+### **Etapa 4: Modularización y Persistencia en Dataiku**
+* **Paquete de Código (`lib/python/pii_detector/`):**
+  * Organización de la lógica mediante programación orientada a objetos (POO) en la sección de *Libraries* de Dataiku.
+  * Separación clara en módulos para preprocesamiento, canal de entrenamiento e inferencia.
+* **Gestión de Artefactos (*Managed Folders*):**
+  * Almacenamiento binario del vectorizador TF-IDF y los modelos entrenados (`.joblib`) dentro de un *Managed Folder* interno de Dataiku para asegurar la reproducción de los resultados.
+
+### **Etapa 5: Desarrollo de la Receta de Inferencia y Pruebas**
+* **Python Recipe de Producción:** Receta en Python que recibe cualquier dataset/tabla de entrada, carga los artefactos entrenados, aplica el filtro con umbral del 75% y escribe las 4 columnas finales[cite: 1, 2].
+* **Validación:**
+  * Evaluación de métricas clave (*Recall*, *Precision*, *F1-Score*) sobre el dataset de prueba.
+  * Verificación del rendimiento y tiempo de ejecución al procesar esquemas de tablas masivas.
