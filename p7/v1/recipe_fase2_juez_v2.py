@@ -16,8 +16,12 @@ import dataiku
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
-from pii_lib.juez_v2 import (aplicar_fallback, aumentar_raras,
-                             preparar_juez_supervisado)
+try:
+    from pii_lib.juez_v2 import (aplicar_fallback, aumentar_raras,
+                                 preparar_juez_supervisado)
+except ImportError:  # si la libreria se nombro pii_lib.juez en Dataiku
+    from pii_lib.juez import (aplicar_fallback, aumentar_raras,
+                              preparar_juez_supervisado)
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score, f1_score
@@ -26,7 +30,11 @@ from sklearn.model_selection import GroupKFold
 UMBRAL_FALLBACK = 0.50
 N_OBJETIVO_RARAS = 15
 
-df = dataiku.Dataset("dataset_validated_prepared").get_dataframe()
+# Acepta tanto dataset_validated_prepared como dataset_validated_prepared_labeled_v2
+try:
+    df = dataiku.Dataset("dataset_validated_prepared_labeled_v2").get_dataframe()
+except Exception:
+    df = dataiku.Dataset("dataset_validated_prepared").get_dataframe()
 base, info = preparar_juez_supervisado(df, target_col="entity", min_ejemplos=2)
 print(f"clases={len(info['clases'])} n={info['n']} eliminadas={info['eliminadas']}")
 print(f"soporte={info['soporte']}")
@@ -47,7 +55,11 @@ Xa_txt, ya_str = aumentar_raras(X_txt, base["entity"].tolist(),
 Xa = vec.transform(Xa_txt)
 ya = pd.Series(ya_str).map({c: i for i, c in enumerate(clases)}).values
 
-n_splits = 5
+# CV robusto a ultra-raras: bienes_patrimonio=2 grupos -> 5 folds es imposible.
+# n_splits dinamico = min(5, min n_groups por clase), minimo 2.
+min_groups = int(base.groupby("entity")["group_id"].nunique().min())
+n_splits = max(2, min(5, min_groups))
+print(f"n_splits={n_splits} (min_groups={min_groups})")
 gkf = GroupKFold(n_splits=n_splits)
 # groups extendidos: originales + grupo del texto origen (aprox por light sin digitos)
 import re as _re
@@ -62,19 +74,35 @@ for tr, va in gkf.split(X, y_lab, groups):
     tr_aug = [i for i, g in enumerate(ga_txt[len(X_txt):]) if g in tr_groups]
     tr_idx = list(tr) + [len(X_txt) + i for i in tr_aug]
     Xtr, ytr = Xa[tr_idx], ya[tr_idx]
-    clf = LGBMClassifier(objective="multiclass", num_class=len(clases),
-                         class_weight="balanced", num_leaves=15,
-                         min_child_samples=5, n_estimators=400,
-                         learning_rate=0.05, verbose=-1, random_state=0)
-    clf.fit(Xtr, ytr)
-    cal = CalibratedClassifierCV(clf, method="sigmoid", cv="prefit")
-    cal.fit(X[tr], y_lab[tr])
-    pr = cal.predict(X[va])
+    # Si el fold-train no contiene todas las clases, LightGBM multiclass
+    # devuelve probas de dimension menor -> fallback lineal para ese fold.
+    if len(set(ytr.tolist())) < len(clases):
+        from sklearn.linear_model import LogisticRegression
+        clf = LogisticRegression(class_weight="balanced", max_iter=1000)
+        clf.fit(Xtr, ytr)
+        pr = clf.predict(X[va])
+    else:
+        clf = LGBMClassifier(objective="multiclass", num_class=len(clases),
+                             class_weight="balanced", num_leaves=15,
+                             min_child_samples=5, n_estimators=400,
+                             learning_rate=0.05, verbose=-1, random_state=0)
+        clf.fit(Xtr, ytr)
+        try:
+            from sklearn.frozen import FrozenEstimator
+            cal = CalibratedClassifierCV(FrozenEstimator(clf),
+                                         method="sigmoid", cv="prefit")
+        except ImportError:  # sklearn < 1.6
+            cal = CalibratedClassifierCV(clf, method="sigmoid", cv="prefit")
+        cal.fit(X[tr], y_lab[tr])
+        pr = cal.predict(X[va])
     accs.append(accuracy_score(y_lab[va], pr))
     f1s.append(f1_score(y_lab[va], pr, average="macro", zero_division=0))
     oof_true.extend(y_lab[va].tolist())
     oof_pred.extend(pr.tolist())
-    f1c = f1_score(y_lab[va], pr, average=None, zero_division=0)
+    # FIX IndexError: fijar labels=0..22 para que f1c siempre mida 23
+    # (sin esto, folds sin alguna rara devuelven array de tamano 19).
+    f1c = f1_score(y_lab[va], pr, labels=list(range(len(clases))),
+                   average=None, zero_division=0)
     for i, c in enumerate(clases):
         per_class.setdefault(c, []).append(round(float(f1c[i]), 3))
 
@@ -92,7 +120,12 @@ final = LGBMClassifier(objective="multiclass", num_class=len(clases),
                        min_child_samples=5, n_estimators=400,
                        learning_rate=0.05, verbose=-1, random_state=0)
 final.fit(Xa, ya)
-cal_final = CalibratedClassifierCV(final, method="sigmoid", cv="prefit")
+try:
+    from sklearn.frozen import FrozenEstimator as _Frozen
+    cal_final = CalibratedClassifierCV(_Frozen(final),
+                                       method="sigmoid", cv="prefit")
+except ImportError:
+    cal_final = CalibratedClassifierCV(final, method="sigmoid", cv="prefit")
 cal_final.fit(X, y_lab)
 
 folder = dataiku.Folder("fase2_juez_v2")
