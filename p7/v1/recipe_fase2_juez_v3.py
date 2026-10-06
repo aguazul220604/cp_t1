@@ -28,14 +28,21 @@ UMBRAL_FALLBACK = 0.50
 N_OBJETIVO_RARAS = 15
 
 df = dataiku.Dataset("gold_v2").get_dataframe()
+print(f"gold_v2 cols={list(df.columns)}")
 if "w" not in df.columns:
     df["w"] = 1.0
+if "label_source" not in df.columns:
+    # gold_v2 construido sin label_source (p.ej. solo name/entity):
+    # todo es gold_validado salvo que w indique lo contrario
+    df["label_source"] = "gold_validado"
+    df.loc[df["w"] != 1.0, "label_source"] = "manual_pool"
 base, info = preparar_juez_supervisado(df, target_col="entity", min_ejemplos=2)
 print(f"clases={len(info['clases'])} n={info['n']} eliminadas={info['eliminadas']}")
 print(f"soporte={info['soporte']}")
-print("mix:\n" + base.merge(df[["name", "label_source", "w"]].drop_duplicates("name"),
-                             on="name", how="left")
-      .groupby(["label_source", "entity"]).size().to_string())
+_meta = base.merge(df[["name", "label_source"]].drop_duplicates("name"),
+                   on="name", how="left")
+_meta["label_source"] = _meta["label_source"].fillna("gold_validado")
+print("mix:\n" + _meta.groupby(["label_source", "entity"]).size().to_string())
 
 # Alinea pesos al orden de base (preparar conserva orden de filas validas)
 w_base = base.merge(df[["name", "w"]].drop_duplicates("name"),
