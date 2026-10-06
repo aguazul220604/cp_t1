@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Banamex | Core of Excellence and Machine Learning — Detección PII
+    </title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="loadingSpinner" class="loading-overlay" aria-hidden="true">
+      <div class="spinner"></div>
+      <p class="loading-text">Analizando...</p>
+    </div>
+
+    <header class="header-banamex">
+      <div class="header-inner">
+        <span class="logo-wrap" aria-hidden="true">
+          <img class="logo-svg" src="img.svg" alt="Banamex" />
+        </span>
+        <div class="brand-text">
+          <h1 class="brand-title">
+            Banamex | Cognitive Services and Machine Learning Core of Excellence
+          </h1>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-inner">
+        <h2>
+          Detección e Identificación de Datos de Información de Identificación
+          Personal (PII)
+        </h2>
+      </div>
+    </section>
+
+    <div class="container">
+      <section class="card">
+        <h3 class="card-title">Cargar dataset</h3>
+        <div class="upload-box" id="dropZone">
+          <label class="file-drop" for="datasetFile">
+            <span id="fileHint">Ningún archivo seleccionado</span>
+          </label>
+          <input
+            type="file"
+            id="datasetFile"
+            accept=".csv,.xlsx,.xls"
+            multiple
+            hidden
+          />
+          <button id="btnProcess" class="btn-banamex">Analizar PII</button>
+        </div>
+        <p id="uploadError" class="error-text" style="display: none"></p>
+      </section>
+
+      <section id="piiSummarySection" class="card" style="display: none">
+        <h3 class="card-title">Resultado por columna</h3>
+        <div class="table-responsive">
+          <table id="piiTable">
+            <thead>
+              <tr>
+                <th>Archivo</th>
+                <th>Columna</th>
+                <th>Predicción</th>
+                <th>Prob. PII</th>
+                <th>Entidad</th>
+                <th>Prob. Entidad</th>
+              </tr>
+            </thead>
+            <tbody id="piiListBody"></tbody>
+          </table>
+        </div>
+        <div class="confirm-box">
+          <button id="btnGenerateCsv" class="btn-banamex">Generar CSV</button>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <span>Banamex · Detección de datos PII</span>
+      </footer>
+    </div>
+
+    <script>
+      if (typeof getWebAppBackendUrl === "undefined") {
+        function getWebAppBackendUrl(path) {
+          return path;
+        }
+      }
+    </script>
+    <script src="app.js"></script>
+  </body>
+</html>
