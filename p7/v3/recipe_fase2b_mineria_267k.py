@@ -19,6 +19,10 @@ import pandas as pd
 
 IN_DATASET = "dataset_no_validated"
 OUT_DATASET = "variantes_lexicas_267k"
+# Managed folder Dataiku donde queda el JSON de operadores permitidos.
+# Crealo una vez en el Flow: + New > Folder > nombre `fase2b_lexico` (ID = fase2b_lexico).
+OUT_FOLDER = "fase2b_lexico"
+OUT_JSON_NAME = "operadores_permitidos.json"
 
 # Familias del doc v2 §Fase 2b — solo estas raices pueden usarse como operador en 2c.
 # La mineria confirma cuales SI se observaron en el 267k.
@@ -65,6 +69,8 @@ def minar_familias(names: pd.Series) -> pd.DataFrame:
             cnt = int(low.str.contains(pat, regex=True).sum())
             if cnt > 0:
                 rows.append({"familia": fam, "variante": v, "n_obs": cnt})
+    if not rows:
+        return pd.DataFrame(columns=["familia", "variante", "n_obs"])
     return pd.DataFrame(rows).sort_values(["familia", "n_obs"], ascending=[True, False]).reset_index(drop=True)
 
 
@@ -75,6 +81,8 @@ def minar_calificadores(names: pd.Series) -> pd.DataFrame:
         cnt = int(low.str.contains(re.escape(c)).sum())
         if cnt > 0:
             rows.append({"calificador": c, "n_obs": cnt})
+    if not rows:
+        return pd.DataFrame(columns=["calificador", "n_obs"])
     return pd.DataFrame(rows).sort_values("n_obs", ascending=False).reset_index(drop=True)
 
 
@@ -100,6 +108,21 @@ def main():
                                     for k, v in sep.items() if k != "n"])
             out = pd.concat([fam_out, cal_out, sep_out], ignore_index=True)
             dataiku.Dataset(OUT_DATASET).write_with_schema(out)
+            # JSON de operadores -> managed folder (misma recipe, segundo output).
+            # En el Flow: selecciona la recipe > Settings > Outputs > + Add > Folder `fase2b_lexico`.
+            payload = {"separadores": sep, "familias_observadas": fam.to_dict("records"),
+                       "calificadores_observados": cal.to_dict("records")}
+            try:
+                folder = dataiku.Folder(OUT_FOLDER)
+                with folder.get_writer(OUT_JSON_NAME) as w:
+                    w.write(json.dumps(payload, ensure_ascii=False, indent=2))
+                print(f"JSON escrito en folder '{OUT_FOLDER}/{OUT_JSON_NAME}'")
+            except Exception as fe:
+                # Si el folder aun no esta enlazado como output, no tumbar la recipe:
+                # imprime el JSON para pegarlo manual en el folder.
+                print(f"AVISO: no se pudo escribir en folder '{OUT_FOLDER}' ({fe}). "
+                      f"Crea el managed folder y enlazalo como output, o guarda manual este JSON "
+                      f"como '{OUT_JSON_NAME}':\n{json.dumps(payload, ensure_ascii=False, indent=2)}")
             print(f"OK 2b: {len(names)} names, {len(fam)} variantes familia, "
                   f"{len(cal)} calificadores, seps={ {k: round(v,3) for k,v in sep.items() if k!='n'} }")
             print("SOLO se observaron las variantes listadas: cualquier operador de 2c fuera de esta lista esta PROHIBIDO.")
