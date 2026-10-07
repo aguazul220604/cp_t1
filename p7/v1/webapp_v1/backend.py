@@ -1,21 +1,17 @@
-"""Backend webapp Detector PII v5 FINAL (binario v3 solo-name + Juez 23, híbrido).
-
-Carga una vez al arrancar (managed folders del proyecto):
-  fase5_modelo_v3/ : modelo.txt (LightGBM ganador), vec_name.pkl,
-                     encoders.json (num_cols; threshold se FIJA en codigo)
-  fase2_juez_v3/   : modelo.txt, vectorizer.pkl, clases.json (23),
-                     calibrador.pkl (CalibratedClassifierCV sigmoide)
-Regla operativa FINAL (pelado o slang, con typos):
-  Nivel 1 EXACTO  : key normalizada == canonico 23-TEST -> PII aunque prob~0.
-  Nivel 2 RARO    : abreviatura rara (soeid, numautos, crd/acct...) -> PII aunque prob<PISO.
-  Nivel 3 MODELO  : prob >= THRESHOLD (0.667).
-  Nivel 4 FUZZY   : PISO (0.15) <= prob < THR + keyword.
-Prob original intacta para auditoria. Entity: si el juez da <0.50 se usa
-el rescate/fallback como prior (corrige fecha_vencimiento 22%).
-Soporta typos: direccin/direccion -> direccion, correoo -> correo, etc.
-Endpoint: POST /process_table -> JSON columns_analysis con pii/prob + entity/prob_entity.
-Sin escritura lateral: no crea ni modifica datasets/folders.
 """
+Backend webapp Detector PII v5 FINAL (binario v3 solo-name + Juez 23, híbrido optimizado).
+
+Carga una vez al arrancar desde las carpetas gestionadas en Dataiku:
+  fase5_modelo_v3/ : modelo.txt (LightGBM), vec_name.pkl, encoders.json
+  fase2_juez_v3/   : modelo.txt, vectorizer.pkl, clases.json (23), calibrador.pkl
+
+Jerarquía de Decisión:
+  Nivel 1 EXACTO  : Coincidencia directa en lista canónica -> PII forzado.
+  Nivel 2 RARO    : Abreviaturas bancarias y slang corporativo -> PII forzado.
+  Nivel 3 MODELO  : Probabilidad estadística del modelo ML >= THRESHOLD (0.667).
+  Nivel 4 FUZZY   : PISO (0.15) <= prob < THRESHOLD + keyword de rescate.
+"""
+
 import json
 import os
 import pickle
@@ -31,19 +27,21 @@ from scipy.sparse import csr_matrix, hstack
 
 _LOAD_ERROR = None
 
+# --- Funciones Auxiliares de Normalización ---
 
 def _strip_accents(s):
     return "".join(
-        c for c in unicodedata.normalize("NFD", s)
+        c for c in unicodedata.normalize("NFD", str(s))
         if unicodedata.category(c) != "Mn"
     )
-
 
 def _norm_light(s):
     if pd.isna(s):
         return ""
     return re.sub(r"\s+", " ", _strip_accents(str(s).lower())).strip()
 
+def _name_norm(s):
+    return re.sub(r"\s*\d+$", "", _norm_light(s)).strip()
 
 def _softmax(scores):
     scores = np.asarray(scores, dtype=float)
@@ -54,35 +52,30 @@ def _softmax(scores):
         scores = e / e.sum(axis=1, keepdims=True)
     return scores
 
+# --- Configuración de Umbrales y Probabilidades ---
 
-THRESHOLD = 0.667  # fijo en codigo (decision; ignora el JSON)
-PISO_RESCATE = 0.15  # solo nivel FUZZY rescata si PISO <= prob < THRESHOLD + keyword
-UMBRAL_FALLBACK = 0.50
-# Probabilidades logicas para rescates: ML primero, regex despues.
-# No se expone origen: solo pii/prob_pii/entity/prob_entity. El motivo
-# queda solo en log servidor.
-PROB_REGLA = {"exacto": 0.85, "raro": 0.78, "fuzzy": 0.70}
-PROB_ENT_REGLA = 0.80
-# Nivel 1 y 2 fuerzan PII sin importar prob (incluso 0.00): son listas
-# cerradas de alta precision, no heuristica abierta. No generan FP fuera
-# de estas keys porque exigen match exacto o abreviatura rara + antis.
+THRESHOLD = 0.667       # Umbral binario PII principal
+PISO_RESCATE = 0.15    # Umbral mínimo para activar rescate fuzzy
+UMBRAL_FALLBACK = 0.50  # Si la certidumbre del Juez es baja (<0.50), interviene la regla
 
-# Reglas deterministas SOLO si prob_entity < UMBRAL_FALLBACK. Autocontenidas
-# (duplican pii_lib/juez_v2 para no acoplar la webapp a la libreria).
+PROB_REGLA = {"exacto": 0.95, "raro": 0.90, "fuzzy": 0.80}
+PROB_ENT_REGLA = 0.90
+
+# --- Mapeos y Reglas Deterministas ---
+
 _REGLAS_FALLBACK = [
     ("curp", ("curp",)),
     ("rfc", ("rfc",)),
-    ("nss", ("nss", "seguro_social", "imss")),
+    ("nss", ("nss", "seguro_social", "imss", "seg_social")),
     ("correo", ("correo", "email", "mail")),
     ("sexo", ("sexo", "genero")),
-    ("fecha_vencimiento", ("venc", "expira", "expiry", "vigencia")),
-    ("fecha_nacimiento", ("nacim", "fnacim", "birth")),
+    ("fecha_vencimiento", ("venc", "expira", "expiry", "vigencia", "f_venc")),
+    ("fecha_nacimiento", ("nacim", "fnacim", "birth", "f_nac")),
     ("telefono", ("tel", "cel", "fono", "phone")),
     ("tarjeta", ("tarjeta", "plastico", "card", "crd")),
-    ("cuenta", ("cuenta", "acct", "cta", "ctogru")),
-    ("cliente", ("cliente", "cust", "clnt")),
+    ("cuenta", ("cuenta", "acct", "cta", "ctogru", "aper cte", "aper_cte")),
+    ("cliente", ("cliente", "cust", "clnt", "borrower")),
 ]
-
 
 def _fallback_regla(key_light, clases):
     k = " " + (key_light or "").replace("_", " ") + " "
@@ -92,25 +85,19 @@ def _fallback_regla(key_light, clases):
             return ent
     return None
 
-
-# --- FINAL v5: canonicos exactos (Nivel 1) + typos conocidos ---
-# key ya viene _norm_light (minusculas, sin acentos, espacios colapsados).
-# Se compara con "_"->" " para que "crd_acct_nbr" == "crd acct nbr".
 _EXACTOS_FUERZA = {
-    # 23-TEST + canonicos produccion (pelado o con sufijo numerico ya limpio):
+    # Nombres Canónicos Banamex y Sufijos Comunes
     "cliente", "correo", "telefono", "contrato", "direccion", "rfc",
     "nomina", "saldo", "cuenta", "nombre", "soeid", "credito",
     "fecha vencimiento", "fecha nacimiento", "sexo", "apellido", "curp",
     "nss", "tarjeta", "actacons", "numdepend", "numautos",
-    "crd acct nbr", "aper cte016",
-    # variantes separador/casing ya normalizadas:
+    "crd acct nbr", "aper cte016", "aper cte", "apertura cuenta",
     "fecha venc", "fecha nac", "ap paterno", "ap materno",
     "num dependientes", "num autos",
 }
-# Typos observados en TEST/prod -> forma canonica. Solo estos, no fuzzy abierto.
+
 _TYPOS = {
     "direcion": "direccion",
-    "direccion": "direccion",  # sin i (captura nueva TEST)
     "direccin": "direccion",
     "dirreccion": "direccion",
     "correoo": "correo",
@@ -125,20 +112,18 @@ _TYPOS = {
     "nomre": "nombre",
     "contratto": "contrato",
 }
-# Nivel 2: abreviaturas raras de alta precision. Si aparecen como token,
-# fuerzan PII aunque prob < PISO. Antis evitan FP (sucursal, etc).
+
 _RAROS_FUERZA = [
     ("credenciales_id", ("soeid", "geid", "efirma", "firma elec"), ()),
     ("bienes_patrimonio", ("numautos", "car dlr", "cardlr"), ()),
-    ("datos_demograficos", ("numdepend", "dependientes",), ()),
+    ("datos_demograficos", ("numdepend", "dependientes"), ()),
     ("documento_legal", ("actacons", "creactecto"), ()),
     ("tarjeta", ("crd acct nbr", "crd", "plastico"), ("ordenante",)),
-    ("cuenta", ("acct nbr", "acct",), ("crd",)),
-    ("nss", ("nss", "imss",), ()),
+    ("cuenta", ("acct nbr", "acct", "aper cte", "aper_cte"), ("crd",)),
+    ("nss", ("nss", "imss"), ()),
     ("curp", ("curp",), ()),
     ("rfc", ("rfc",), ()),
 ]
-
 
 def _corrige_typo(key_light):
     k = (key_light or "").replace("_", " ").strip()
@@ -148,11 +133,9 @@ def _corrige_typo(key_light):
         return k
     return k
 
-
 def _es_exacto_fuerza(key_light):
     k = _corrige_typo(key_light)
     return k in _EXACTOS_FUERZA
-
 
 def _raro_fuerza(key_light):
     k = " " + _corrige_typo(key_light) + " "
@@ -163,10 +146,6 @@ def _raro_fuerza(key_light):
             return ent
     return None
 
-
-# Rescate regex binario: refuerzo del LightGBM, 23 entidades (otro_pii nunca
-# rescata: es cuarentena). Todo sobre key normalizada (minusculas, sin acentos).
-# Orden: especificas primero; primer match gana.
 _REGLAS_RESCATE = [
     ("nss", ("nss", "seguridad_imss", "seg_social", "imss"), ()),
     ("curp", ("curp",), ()),
@@ -175,7 +154,7 @@ _REGLAS_RESCATE = [
                   "surname", "last_name"), ()),
     ("fecha_nacimiento", ("nacim", "fnac", "fnacim", "birth", "dob"),
      ("venc", "expira", "expiry", "vigencia", "ordenante")),
-    ("fecha_vencimiento", ("venc", "expira", "expiry", "vigencia"),
+    ("fecha_vencimiento", ("venc", "expira", "expiry", "vigencia", "f_venc"),
      ("nacim", "fnac", "birth")),
     ("credenciales_id", ("soeid", "geid", "password", "passwd", "pwd", "token",
                          "login", "credencial", "firma_elec", "efirma"), ()),
@@ -192,7 +171,7 @@ _REGLAS_RESCATE = [
     ("tarjeta", ("tarjeta", "plastico", "card", "crd"), ()),
     ("telefono", ("telefono", "tel_casa", "tel_oficina", "cel", "phone"), ()),
     ("cuenta", ("cuenta", "cuentabasica", "cta", "ctogru", "ordenante",
-                 "account"), ()),
+                 "account", "aper cte", "aper_cte"), ()),
     ("nomina", ("nomina", "nominamaker"), ()),
     ("nombre", ("nombre",), ("nomina", "nominamaker")),
     ("cliente", ("cliente", "cust", "clnt", "borrower"), ()),
@@ -206,10 +185,7 @@ _REGLAS_RESCATE = [
      ()),
 ]
 
-
 def _rescate_regex(key_light):
-    # Normaliza igual ambos lados: la key llega con "_"->" ", asi que los
-    # patrones con "_" (tel_casa, ap_paterno, crd_nbr) se comparan con " ".
     k = " " + (key_light or "").replace("_", " ") + " "
     for ent, pos, anti in _REGLAS_RESCATE:
         if anti and any(a.replace("_", " ") in k for a in anti):
@@ -218,10 +194,7 @@ def _rescate_regex(key_light):
             return ent
     return None
 
-
-def _name_norm(s):
-    return re.sub(r"\s*\d+$", "", _norm_light(s)).strip()
-
+# --- Control de Dimensiones de Matriz ---
 
 def _check_width_bin(X, clf):
     esp = int(clf.num_feature())
@@ -233,10 +206,7 @@ def _check_width_bin(X, clf):
             "Despliega vec_name.pkl + modelo.txt juntos desde fase5_modelo_v3.")
     return X
 
-
 def _check_width_juez(Xj, j_bst):
-    """Guardia de dimensiones vocabulario vs Booster (incidente 21151/2386).
-    Trunca columnas sobrantes; error explicito si faltan."""
     esp = int(j_bst.num_feature())
     if Xj.shape[1] > esp:
         return Xj[:, :esp]
@@ -246,12 +216,18 @@ def _check_width_juez(Xj, j_bst):
             "Despliega vectorizer.pkl + modelo.txt + clases.json juntos desde fase2_juez_v3.")
     return Xj
 
+# --- Carga de Artefactos ---
 
 def _load_artifacts():
     import lightgbm as lgb
 
-    f5 = dataiku.Folder("fase5_modelo_v3").get_path()
+    try:
+        f5 = dataiku.Folder("fase5_modelo_v3").get_path()
+    except Exception:
+        f5 = dataiku.Folder("fase5_modelo_operativo").get_path()
+
     f2 = dataiku.Folder("fase2_juez_v3").get_path()
+
     with open(os.path.join(f5, "vec_name.pkl"), "rb") as f:
         vec_name = pickle.load(f)
     with open(os.path.join(f5, "encoders.json"), encoding="utf-8") as f:
@@ -260,16 +236,17 @@ def _load_artifacts():
         j_vec = pickle.load(f)
     with open(os.path.join(f2, "clases.json"), encoding="utf-8") as f:
         j_clases = json.load(f)
+
     cal_path = os.path.join(f2, "calibrador.pkl")
     j_cal = None
     if os.path.exists(cal_path):
         with open(cal_path, "rb") as f:
             j_cal = pickle.load(f)
+
     return {
         "vec_name": vec_name,
         "threshold": THRESHOLD,
-        "num_cols": list(enc.get("num_cols", ["longitud", "n_tokens",
-                                              "tiene_sufijo"])),
+        "num_cols": list(enc.get("num_cols", ["longitud", "n_tokens", "tiene_sufijo"])),
         "clf": lgb.Booster(model_file=os.path.join(f5, "modelo.txt")),
         "j_vec": j_vec,
         "j_clases": j_clases,
@@ -277,14 +254,14 @@ def _load_artifacts():
         "j_cal": j_cal,
     }
 
-
 try:
     ARTS = _load_artifacts()
-except Exception as exc:  # visible en logs + respuesta 500 explicita
+except Exception as exc:
     ARTS = None
     _LOAD_ERROR = f"{type(exc).__name__}: {exc}"
     traceback.print_exc()
 
+# --- Lectura de Archivos ---
 
 def read_uploaded_file(file):
     filename = file.filename.lower()
@@ -295,31 +272,33 @@ def read_uploaded_file(file):
     else:
         raise ValueError(f"Formato no soportado para '{file.filename}'. Sube archivos .csv o .xlsx.")
 
+# --- Lógica Principal de Inferencia ---
 
 def predict_columns(rows):
-    """rows: lista de dicts {source_file, name, dataset, type}. Devuelve lista
-    con {source_file, name, is_pii, pii_probability, entity, entity_probability}."""
     base = pd.DataFrame(rows)
     key = base["name"].map(_norm_light)
-    # Paridad exacta con train (recipe_build_binario_v3): key=light,
-    # n_tokens sobre name_norm, sufijo sobre light.
     norms = base["name"].map(_name_norm)
+
     feats = {
         "longitud": base["name"].fillna("").astype(str).str.len().values,
         "n_tokens": norms.str.split().str.len().fillna(0).astype(int).values,
         "tiene_sufijo": key.str.contains(r"\d+$", regex=True).astype(int).values,
     }
+
     Xn = ARTS["vec_name"].transform(key.fillna("").tolist())
     num = np.vstack([feats[c] for c in ARTS["num_cols"]]).T
     X = _check_width_bin(hstack([Xn, csr_matrix(num)]).tocsr(), ARTS["clf"])
+
     prob = np.asarray(ARTS["clf"].predict(X)).ravel()
-    # ML primero: pii_ml sin tocar. Regex solo si ML dice NO.
     pii = prob >= ARTS["threshold"]
     prob_final = np.asarray(prob, dtype=float).copy()
     keys_list = [_corrige_typo(k) for k in key.fillna("").tolist()]
     prior_ent = [None] * len(base)
     motivo = ["modelo" if p else "" for p in pii]
+
     c_exact = c_raro = c_fuzzy = 0
+
+    # Rescate por Reglas (Capas 1, 2 y 4)
     for i, (pr, k) in enumerate(zip(prob, keys_list)):
         if not k:
             continue
@@ -327,8 +306,7 @@ def predict_columns(rows):
             continue
         if _es_exacto_fuerza(k):
             pii[i] = True
-            prior_ent[i] = _rescate_regex(k) or _fallback_regla(
-                k, ARTS["j_clases"])
+            prior_ent[i] = _rescate_regex(k) or _fallback_regla(k, ARTS["j_clases"])
             motivo[i] = "exacto"
             prob_final[i] = max(float(pr), PROB_REGLA["exacto"])
             c_exact += 1
@@ -346,31 +324,35 @@ def predict_columns(rows):
                 motivo[i] = "fuzzy"
                 prob_final[i] = max(float(pr), PROB_REGLA["fuzzy"])
                 c_fuzzy += 1
+
     print(f"[binario-v5] thr={ARTS['threshold']} piso={PISO_RESCATE} "
           f"pii_modelo={int((prob >= ARTS['threshold']).sum())} "
           f"exacto={c_exact} raro={c_raro} fuzzy={c_fuzzy} de {len(base)}")
+
+    # Determinación de la Entidad (Juez)
     ent = [None] * len(base)
     eprob = [None] * len(base)
     m = (key != "").to_numpy() & np.asarray(pii)
+
     if int(m.sum()):
         sel = np.where(m)[0]
         keys = key.iloc[sel].tolist()
         Xj = ARTS["j_vec"].transform(keys)
         Xj = _check_width_juez(Xj, ARTS["j_bst"])
+
         if ARTS.get("j_cal") is not None:
-            # Calibrador v3 (sigmoide): prob_entity ya calibrada
             sj = np.asarray(ARTS["j_cal"].predict_proba(Xj), dtype=float)
         else:
             sj = _softmax(np.asarray(ARTS["j_bst"].predict(Xj)))
+
         idx = sj.argmax(axis=1)
-        for j, (k, i, v) in enumerate(zip(sel, idx, sj.max(axis=1))):
-            e = ARTS["j_clases"][int(i)]
+        for j, (k, i_cls, v) in enumerate(zip(sel, idx, sj.max(axis=1))):
+            e = ARTS["j_clases"][int(i_cls)]
             p = round(float(v), 4)
             mot = motivo[int(k)]
             pr = prior_ent[int(k)]
             valid = ARTS["j_clases"] or []
-            # Prioridad a regla exacta/raro: tarjeta siempre tarjeta,
-            # aunque el juez diga telefono 82%. Sin exponer origen.
+
             if mot in ("exacto", "raro") and pr is not None and pr in valid:
                 e = pr
                 p = round(max(float(v), PROB_ENT_REGLA), 4)
@@ -379,11 +361,13 @@ def predict_columns(rows):
                 if pr is not None and pr in valid:
                     e = pr
                     p = round(max(float(v), PROB_ENT_REGLA), 4)
-                elif fb is not None and fb != e:
+                elif fb is not None:
                     e = fb
+                    p = round(max(float(v), 0.8000), 4)
+
             ent[int(k)] = e
             eprob[int(k)] = p
-    # Salida: solo pii/prob_pii/entity/prob_entity (origen solo en log).
+
     return [{
         "source_file": r["source_file"],
         "name": r["name"],
@@ -393,6 +377,7 @@ def predict_columns(rows):
         "entity_probability": ep,
     } for r, p, pr, e, ep in zip(rows, pii, prob_final, ent, eprob)]
 
+# --- Endpoint Flask ---
 
 @app.route('/process_table', methods=['POST'])
 def process_table():
