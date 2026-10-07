@@ -95,9 +95,9 @@ gtr, gva = train_test_split(gtab, test_size=TEST_SIZE, random_state=SEED,
                             stratify=gtab["pii_maj"])
 tr_mask = full["group_id"].isin(set(gtr["group_id"])).values
 assert not (set(gtr["group_id"]) & set(gva["group_id"])), "solape de grupos"
+full["split"] = np.where(tr_mask, "train", "holdout")
 train = full[tr_mask].reset_index(drop=True)
 hold = full[~tr_mask].reset_index(drop=True)
-train["split"], hold["split"] = "train", "holdout"
 
 gate = train[train["entity"].isin(GATE_ENTITIES)]["entity"].value_counts()
 print(f"binario_v3={len(full)} (PII={(full['pii'] == 1).sum()} "
