@@ -1,94 +1,98 @@
 <!doctype html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>
-      Banamex | Core of Excellence and Machine Learning — Detección PII
-    </title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div id="loadingSpinner" class="loading-overlay" aria-hidden="true">
-      <div class="spinner"></div>
-      <p class="loading-text">Analizando...</p>
-    </div>
-
-    <header class="header-banamex">
-      <div class="header-inner">
-        <span class="logo-wrap" aria-hidden="true">
-          <img class="logo-svg" src="img.svg" alt="Banamex" />
-        </span>
-        <div class="brand-text">
-          <h1 class="brand-title">
-            Banamex | Cognitive Services and Machine Learning Core of Excellence
-          </h1>
-        </div>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banamex — Detección PII</title>
+<meta name="description" content="Detección PII con el estilo visual Banamex: tokens, slips, botones, inputs, alertas y tabla.">
+<!--
+  DSS: mantén los dos hrefs /public/vendor/ y BORRA el link styles.css y el
+  script app.js al pegar en DSS (los inyecta desde las pestañas CSS/JS).
+  Local: styles.css y app.js cargan desde esta misma carpeta.
+-->
+<link rel="icon" href="/public/vendor/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/public/vendor/banamex.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topband">
+  <header class="masthead">
+    <div class="masthead-brand">
+      <svg class="rose" viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
+        <g fill="currentColor">
+          <ellipse cx="22" cy="13.5" rx="6.2" ry="9.5"/>
+          <ellipse cx="22" cy="13.5" rx="6.2" ry="9.5" transform="rotate(60 22 22)"/>
+          <ellipse cx="22" cy="13.5" rx="6.2" ry="9.5" transform="rotate(120 22 22)"/>
+          <ellipse cx="22" cy="13.5" rx="6.2" ry="9.5" transform="rotate(180 22 22)"/>
+          <ellipse cx="22" cy="13.5" rx="6.2" ry="9.5" transform="rotate(240 22 22)"/>
+          <ellipse cx="22" cy="13.5" rx="6.2" ry="9.5" transform="rotate(300 22 22)"/>
+        </g>
+        <circle cx="22" cy="22" r="3.4" fill="var(--c-azul)"/>
+      </svg>
+      <div>
+        <h1 class="wordmark" style="font-size:1.6rem">Banamex<span class="wordmark-sub">Detección PII</span></h1>
+        <p class="masthead-sub">CoE ML · binario v3 + Juez 23 · umbral 0.667</p>
       </div>
+    </div>
+  </header>
+</div>
+<main class="page">
+
+  <!-- Slip 1: carga -->
+  <article class="slip" aria-labelledby="t-carga">
+    <header class="slip-head">
+      <h2 class="slip-title" id="t-carga">Cargar dataset</h2>
+      <p class="slip-ref">PII · BN-01</p>
     </header>
-
-    <section class="hero">
-      <div class="hero-inner">
-        <h2>
-          Detección e Identificación de Datos de Información de Identificación
-          Personal (PII)
-        </h2>
+    <form id="pii-form" novalidate>
+      <div class="field" id="field-file">
+        <label class="field-label" for="datasetFile">Dataset (.csv, .xlsx, .xls)</label>
+        <label class="file-drop" for="datasetFile"><span id="fileHint">Ningún archivo seleccionado</span></label>
+        <input type="file" id="datasetFile" accept=".csv,.xlsx,.xls" multiple hidden>
+        <span class="field-note" id="note-file">Se analizan nombres de columna. Nada sale del servidor.</span>
       </div>
-    </section>
+      <div class="alert alert-error" id="uploadError" hidden>
+        <span class="alert-mark" aria-hidden="true">!</span><span id="uploadError-text">—</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btnProcess" type="submit">Analizar PII</button>
+        <button class="btn btn-secondary" id="btn-clear" type="button">Limpiar</button>
+      </div>
+      <p class="transfer-result mono" id="upload-result" aria-live="polite"></p>
+    </form>
+    <footer class="slip-foot"><span>Exacto · raro · modelo · fuzzy</span><span id="resultsMeta">0 columnas · 0 PII</span></footer>
+  </article>
 
-    <div class="container">
-      <section class="card">
-        <h3 class="card-title">Cargar dataset</h3>
-        <div class="upload-box" id="dropZone">
-          <label class="file-drop" for="datasetFile">
-            <span id="fileHint">Ningún archivo seleccionado</span>
-          </label>
-          <input
-            type="file"
-            id="datasetFile"
-            accept=".csv,.xlsx,.xls"
-            multiple
-            hidden
-          />
-          <button id="btnProcess" class="btn-banamex">Analizar PII</button>
-        </div>
-        <p id="uploadError" class="error-text" style="display: none"></p>
-      </section>
-
-      <section id="piiSummarySection" class="card" style="display: none">
-        <h3 class="card-title">Resultado por columna</h3>
-        <div class="table-responsive">
-          <table id="piiTable">
-            <thead>
-              <tr>
-                <th>Archivo</th>
-                <th>Columna</th>
-                <th>Predicción</th>
-                <th>Prob. PII</th>
-                <th>Entidad</th>
-                <th>Prob. Entidad</th>
-              </tr>
-            </thead>
-            <tbody id="piiListBody"></tbody>
-          </table>
-        </div>
-        <div class="confirm-box">
-          <button id="btnGenerateCsv" class="btn-banamex">Generar CSV</button>
-        </div>
-      </section>
-
-      <footer class="foot">
-        <span>Banamex · Detección de datos PII</span>
-      </footer>
+  <!-- Slip 2: resultado -->
+  <article class="slip" aria-labelledby="t-res">
+    <header class="slip-head">
+      <h2 class="slip-title" id="t-res">Resultado por columna</h2>
+      <p class="slip-ref">PII · BN-02</p>
+    </header>
+    <div class="field" style="max-width:52ch">
+      <label class="field-label" for="in-filter">Filtro</label>
+      <input class="input mono" id="in-filter" type="text" autocomplete="off" placeholder="Filtrar por archivo, columna o entidad…">
+      <span class="field-note">Filtra sin re-analizar. Vacío = todo.</span>
     </div>
+    <div class="field"><label class="choice"><input type="checkbox" id="in-only-pii"> <span>Solo PII</span></label></div>
+    <div id="loadingSkeleton" hidden>
+      <div class="skeleton is-tall"></div><div class="skeleton"></div><div class="skeleton is-short"></div>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="piiTable" aria-label="Resultado por columna">
+        <thead><tr><th scope="col">Archivo</th><th scope="col">Columna</th><th scope="col">Predicción</th><th scope="col">Prob. PII</th><th scope="col">Entidad</th><th scope="col">Prob. entidad</th></tr></thead>
+        <tbody id="piiListBody"><tr><td colspan="6">Nada inspeccionado todavía. Cuando lo haya, se numera aquí.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnGenerateCsv" type="button">Generar CSV</button>
+    </div>
+    <footer class="slip-foot"><span>PII v5 · binario v3 + Juez 23</span><span>BN-02</span></footer>
+  </article>
 
-    <script>
-      if (typeof getWebAppBackendUrl === "undefined") {
-        function getWebAppBackendUrl(path) {
-          return path;
-        }
-      }
-    </script>
-    <script src="app.js"></script>
-  </body>
+</main>
+
+<!-- Delete this tag when pasting into DSS — the JS tab is injected by DSS itself. -->
+<script src="app.js"></script>
+</body>
 </html>

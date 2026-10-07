@@ -1,223 +1,192 @@
-let currentColumnsAnalysis = [];
+/* PII v1 con estilo Banamex. Vanilla JS, sin dependencias.
+   1. CONFIG  2. HELPERS  3. STATE  4. API  5. RENDER  6. INSPECT  7. BOOT */
+"use strict";
 
-document
-  .getElementById("btnProcess")
-  .addEventListener("click", handleProcessClick);
-document
-  .getElementById("btnGenerateCsv")
-  .addEventListener("click", handleGenerateCsvClick);
+const API = { process: "process_table" };
 
-const fileInput = document.getElementById("datasetFile");
-const fileHint = document.getElementById("fileHint");
-const dropZone = document.getElementById("dropZone");
-const fileDrop = dropZone ? dropZone.querySelector(".file-drop") : null;
-
-if (fileInput) {
-  fileInput.addEventListener("change", updateFileHint);
+function apiUrl(path) {
+  if (typeof getWebAppBackendUrl === "function") {
+    try { return getWebAppBackendUrl(path); } catch { return path; }
+  }
+  return path;
 }
-if (fileDrop && fileInput) {
-  ["dragenter", "dragover"].forEach((ev) =>
-    fileDrop.addEventListener(ev, (e) => {
-      e.preventDefault();
-      fileDrop.classList.add("dragover");
-    })
-  );
-  ["dragleave", "drop"].forEach((ev) =>
-    fileDrop.addEventListener(ev, (e) => {
-      e.preventDefault();
-      fileDrop.classList.remove("dragover");
-    })
-  );
-  fileDrop.addEventListener("drop", (e) => {
-    if (e.dataTransfer && e.dataTransfer.files.length) {
-      fileInput.files = e.dataTransfer.files;
-      updateFileHint();
-    }
+
+const $ = (sel, root = document) => root.querySelector(sel);
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = String(s ?? "");
+  return d.innerHTML;
+}
+const pctText = (p) => (Number(p || 0) * 100).toFixed(2) + "%";
+
+const state = { columns: [], busy: false, filter: "", onlyPii: false };
+
+async function apiProcess(formData) {
+  const res = await fetch(apiUrl(API.process), { method: "POST", body: formData });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.status !== "success") {
+    throw new Error(data.message || ("HTTP " + res.status + " en " + API.process));
+  }
+  return data;
+}
+
+function visibleColumns() {
+  const q = state.filter.trim().toLowerCase();
+  return state.columns.filter((c) => {
+    if (state.onlyPii && !c.is_pii) return false;
+    if (!q) return true;
+    return [c.source_file, c.name, c.entity].some((v) =>
+      String(v ?? "").toLowerCase().includes(q));
   });
+}
+
+function renderMeta() {
+  const total = state.columns.length;
+  const pii = state.columns.filter((c) => c.is_pii).length;
+  $("#resultsMeta").textContent = `${total} columnas · ${pii} PII`;
+}
+
+function renderTable() {
+  const tb = $("#piiListBody");
+  tb.textContent = "";
+  const rows = visibleColumns();
+  if (!rows.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 6;
+    td.textContent = state.columns.length
+      ? "Ninguna columna coincide con el filtro."
+      : "Nada inspeccionado todavía. Cuando lo haya, se numera aquí.";
+    tr.append(td); tb.append(tr);
+    return;
+  }
+  for (const col of rows) {
+    const tr = document.createElement("tr");
+    if (col.is_pii) tr.className = "pii-row";
+    const ent = col.entity ?? "—";
+    const entP = (col.entity_probability === null || col.entity_probability === undefined)
+      ? "—" : pctText(col.entity_probability);
+    tr.innerHTML =
+      `<td>${escapeHtml(col.source_file || "")}</td>` +
+      `<td><strong>${escapeHtml(col.name)}</strong></td>` +
+      `<td><span class="status-badge ${col.is_pii ? "danger" : "success"}">${col.is_pii ? "PII" : "NO PII"}</span></td>` +
+      `<td><span class="prob-num">${pctText(col.pii_probability)}</span></td>` +
+      `<td>${escapeHtml(ent)}</td><td>${escapeHtml(entP)}</td>`;
+    tb.append(tr);
+  }
+}
+
+function showAlert(msg, kind = "error") {
+  const box = $("#uploadError");
+  if (!msg) { box.hidden = true; return; }
+  box.className = "alert " + (kind === "warn" ? "alert-warn" : "alert-error");
+  $("#uploadError-text").textContent = msg;
+  box.hidden = false;
+  $("#field-file").classList.toggle("is-error", kind === "error");
+}
+
+function setBusy(b) {
+  state.busy = b;
+  $("#btnProcess").disabled = b;
+  $("#btnProcess").textContent = b ? "Analizando…" : "Analizar PII";
+  $("#btnGenerateCsv").disabled = b;
+  $("#loadingSkeleton").hidden = !b;
+  if (b) $("#upload-result").textContent = "Analizando columnas…";
 }
 
 function updateFileHint() {
-  if (!fileHint || !fileInput) return;
-  const n = fileInput.files ? fileInput.files.length : 0;
-  if (!n) {
-    fileHint.textContent = "Ningún archivo seleccionado";
-    fileHint.classList.remove("has-files");
-  } else {
-    const names = Array.from(fileInput.files)
-      .slice(0, 3)
-      .map((f) => f.name)
-      .join(", ");
-    const extra = n > 3 ? ` +${n - 3} más` : "";
-    fileHint.textContent = `${n} archivo(s): ${names}${extra}`;
-    fileHint.classList.add("has-files");
-  }
+  const input = $("#datasetFile"), hint = $("#fileHint");
+  const n = input.files ? input.files.length : 0;
+  if (!n) { hint.textContent = "Ningún archivo seleccionado"; hint.classList.remove("has-files"); return; }
+  const names = Array.from(input.files).slice(0, 3).map((f) => f.name).join(", ");
+  hint.textContent = `${n} archivo(s): ${names}${n > 3 ? ` +${n - 3} más` : ""}`;
+  hint.classList.add("has-files");
 }
 
-function handleProcessClick() {
-  const files = fileInput.files;
+function clearAll() {
+  $("#pii-form").reset();
+  updateFileHint();
+  showAlert(null);
+  $("#note-file").textContent = "Se analizan nombres de columna. Nada sale del servidor.";
+  state.columns = []; state.filter = ""; state.onlyPii = false;
+  $("#in-filter").value = ""; $("#in-only-pii").checked = false;
+  $("#upload-result").textContent = "";
+  renderMeta(); renderTable();
+  $("#datasetFile").focus();
+}
 
-  hideError();
-
-  if (!files || files.length === 0) {
-    showError("Por favor, selecciona uno o más archivos CSV o Excel.");
+async function onSubmit(e) {
+  e.preventDefault();
+  if (state.busy) return;
+  showAlert(null);
+  $("#upload-result").textContent = "";
+  const input = $("#datasetFile");
+  if (!input.files || !input.files.length) {
+    showAlert("Por favor, selecciona uno o más archivos CSV o Excel.");
+    input.focus();
     return;
   }
-
-  const formData = new FormData();
-  Array.from(files).forEach((file) => formData.append("file", file));
-
-  document.getElementById("loadingSpinner").style.display = "flex";
-
-  fetch(getWebAppBackendUrl("process_table"), {
-    method: "POST",
-    body: formData,
-  })
-    .then((response) =>
-      response.json().then((data) => ({ ok: response.ok, data })),
-    )
-    .then(({ ok, data }) => {
-      document.getElementById("loadingSpinner").style.display = "none";
-
-      if (!ok || data.status !== "success") {
-        throw new Error(
-          data.message || "Error desconocido al procesar las tablas.",
-        );
-      }
-
-      currentColumnsAnalysis = data.columns_analysis || [];
-      renderSummary(currentColumnsAnalysis);
-
-      if (data.warnings && data.warnings.length) {
-        showWarning(data.warnings.join(" | "));
-      }
-
-      const section = document.getElementById("piiSummarySection");
-      section.style.display = "block";
-      section.scrollIntoView({ behavior: "smooth", block: "start" });
-    })
-    .catch((error) => {
-      document.getElementById("loadingSpinner").style.display = "none";
-      showError(error.message);
-    });
-}
-
-function probText(pct) {
-  return '<span class="prob-num">' + pct.toFixed(2) + '%</span>';
-}
-
-function renderSummary(columns) {
-  const tbody = document.getElementById("piiListBody");
-  tbody.innerHTML = "";
-
-  const total = columns.length;
-  const piiCount = columns.filter((c) => c.is_pii).length;
-  const meta = document.getElementById("resultsMeta");
-  if (meta) {
-    meta.textContent = `${total} columnas analizadas · ${piiCount} PII detectadas`;
+  const fd = new FormData();
+  Array.from(input.files).forEach((f) => fd.append("file", f));
+  setBusy(true);
+  try {
+    const data = await apiProcess(fd);
+    state.columns = data.columns_analysis || [];
+    const pii = state.columns.filter((c) => c.is_pii).length;
+    renderMeta(); renderTable();
+    $("#upload-result").textContent = `${state.columns.length} columnas · ${pii} PII.`;
+    if (data.warnings && data.warnings.length) showAlert(data.warnings.join(" | "), "warn");
+  } catch (err) {
+    showAlert(err.message || "Error desconocido al procesar las tablas.");
+  } finally {
+    setBusy(false);
   }
-
-  columns.forEach((col, i) => {
-    const probPct = (col.pii_probability * 100);
-    const isPii = col.is_pii;
-    const entity = col.entity ?? "—";
-    const entityPct =
-      col.entity_probability === null || col.entity_probability === undefined
-        ? "—"
-        : (col.entity_probability * 100).toFixed(2) + "%";
-
-    const tr = document.createElement("tr");
-    if (isPii) tr.classList.add("pii-row");
-
-    tr.innerHTML = `
-      <td>${escapeHtml(col.source_file || "")}</td>
-      <td><strong>${escapeHtml(col.name)}</strong></td>
-      <td>
-        <span class="status-badge ${isPii ? "danger" : "success"}">
-          ${isPii ? "PII" : "NO PII"}
-        </span>
-      </td>
-      <td class="prob-cell">${probText(probPct)}</td>
-      <td>${escapeHtml(entity)}</td>
-      <td>${entityPct}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-function handleGenerateCsvClick() {
-  if (!currentColumnsAnalysis.length) {
-    showError("Primero analiza al menos una tabla antes de generar el CSV.");
-    return;
-  }
-
-  const header = [
-    "Archivo",
-    "Nombre de Columna",
-    "Prediccion",
-    "Probabilidad PII (%)",
-    "Entidad",
-    "Probabilidad Entidad (%)",
-  ];
-  const rows = currentColumnsAnalysis.map((col) => [
-    col.source_file || "",
-    col.name,
-    col.is_pii ? "PII" : "NO PII",
-    (col.pii_probability * 100).toFixed(2),
-    col.entity ?? "",
-    col.entity_probability === null || col.entity_probability === undefined
-      ? ""
-      : (col.entity_probability * 100).toFixed(2),
-  ]);
-
-  const csvContent = [header, ...rows].map(toCsvRow).join("\r\n");
-  downloadCsv(csvContent, "analisis_pii.csv");
 }
 
 function toCsvRow(fields) {
-  return fields
-    .map((field) => {
-      const value = String(field ?? "");
-      const needsQuotes = /[",\n]/.test(value);
-      const escaped = value.replace(/"/g, '""');
-      return needsQuotes ? `"${escaped}"` : escaped;
-    })
-    .join(",");
+  return fields.map((f) => {
+    const v = String(f ?? "");
+    return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  }).join(",");
 }
 
-function downloadCsv(csvContent, filename) {
-  const blob = new Blob(["\ufeff" + csvContent], {
-    type: "text/csv;charset=utf-8;",
-  });
+function handleCsv() {
+  if (!state.columns.length) {
+    showAlert("Primero analiza al menos una tabla antes de generar el CSV.");
+    return;
+  }
+  const header = ["Archivo", "Nombre de Columna", "Prediccion", "Probabilidad PII (%)", "Entidad", "Probabilidad Entidad (%)"];
+  const rows = state.columns.map((c) => [
+    c.source_file || "", c.name, c.is_pii ? "PII" : "NO PII",
+    (Number(c.pii_probability || 0) * 100).toFixed(2), c.entity ?? "",
+    (c.entity_probability === null || c.entity_probability === undefined) ? "" : (Number(c.entity_probability) * 100).toFixed(2),
+  ]);
+  const blob = new Blob(["\ufeff" + [header, ...rows].map(toCsvRow).join("\r\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const a = document.createElement("a");
+  a.href = url; a.download = "analisis_pii.csv";
+  document.body.append(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
 
-function showError(message) {
-  const el = document.getElementById("uploadError");
-  el.textContent = message;
-  el.className = "error-text";
-  el.style.display = "block";
+function boot() {
+  $("#pii-form").addEventListener("submit", onSubmit);
+  $("#btn-clear").addEventListener("click", clearAll);
+  $("#btnGenerateCsv").addEventListener("click", handleCsv);
+  $("#datasetFile").addEventListener("change", updateFileHint);
+  const drop = $(".file-drop");
+  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("dragover"); }));
+  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("dragover"); }));
+  drop.addEventListener("drop", (e) => {
+    if (e.dataTransfer && e.dataTransfer.files.length) {
+      $("#datasetFile").files = e.dataTransfer.files;
+      updateFileHint();
+    }
+  });
+  $("#in-filter").addEventListener("input", (e) => { state.filter = e.target.value; renderTable(); });
+  $("#in-only-pii").addEventListener("change", (e) => { state.onlyPii = e.target.checked; renderTable(); });
+  renderMeta(); renderTable(); updateFileHint();
 }
 
-function showWarning(message) {
-  const el = document.getElementById("uploadError");
-  el.textContent = message;
-  el.className = "warning-text";
-  el.style.display = "block";
-}
-
-function hideError() {
-  document.getElementById("uploadError").style.display = "none";
-}
-
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
-}
+document.addEventListener("DOMContentLoaded", boot);
