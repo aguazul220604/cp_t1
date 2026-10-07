@@ -307,14 +307,34 @@ def predecir(df: pd.DataFrame, arts: dict) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------- Fase 3a
+# Doctrina mundo cerrado (gold_v3): solo match>=90 con vecino PII importa PII
+# al train. Lo demas NO aporta etiqueta de entrenamiento:
+#   50-90  -> cola de revision manual (no entra a gold_v3)
+#   <50    -> excluido de gold_v3 (el pii original del pool NO se hereda)
+# `otro_pii` queda solo como cuarentena en inferencia, no como clase de train.
 THRESH_FUERTE = 90.0
 THRESH_PARCIAL = 50.0
-W_SIN_EVIDENCIA = 0.3
+W_SIN_EVIDENCIA = 0.3  # legacy: solo para linaje/diagnostico, NO para gold_v3
+W_MATCH_VALIDADO = 1.0  # importado match>=90 pesa igual que gold (decision)
+W_MANUAL_POOL = 0.5
+W_SINTETICO = 0.3
 
 
 def assign_pii_final(similarity: float, vecino_pii: bool, pii_orig: bool):
+    """Legacy (pipeline original 267k): se conserva para linaje del
+    dataset_267k_pii_final existente. NO usar para construir gold_v3."""
     if similarity >= THRESH_FUERTE:
         return bool(vecino_pii), "validado_21k", 1.0
     if similarity >= THRESH_PARCIAL:
         return bool(vecino_pii), "evidencia_parcial", round(float(similarity) / 100, 4)
     return bool(pii_orig), "sin_evidencia_mantenido", W_SIN_EVIDENCIA
+
+
+def decidir_import_gold_v3(similarity: float, vecino_pii: bool):
+    """Mundo cerrado: devuelve (accion, pii, label_source, w).
+    accion en {importar, revision, excluir}."""
+    if similarity >= THRESH_FUERTE and bool(vecino_pii):
+        return "importar", True, "match_validado", W_MATCH_VALIDADO
+    if similarity >= THRESH_PARCIAL:
+        return "revision", None, "revision_manual", 0.0
+    return "excluir", None, "excluido_sin_evidencia", 0.0
