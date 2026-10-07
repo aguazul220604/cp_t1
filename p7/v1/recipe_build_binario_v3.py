@@ -87,12 +87,33 @@ full["n_tokens"] = full["name_norm"].str.split().str.len().fillna(0).astype(int)
 full["tiene_sufijo"] = full["light"].str.contains(r"\d+$", regex=True).astype(int)
 full = full[full["light"] != ""].reset_index(drop=True)
 
-# Split por grupo, estratificado por pii mayoritario del grupo
+# Split por grupo, estratificado por pii + garantia de slices evaluables:
+# toda entidad PII con >=2 grupos deja >=1 grupo en holdout (determinista).
+# Asi rec_correo y raras nunca quedan NaN. Entidades de 1 grupo van a train.
+gent = full[full["pii"] == 1].groupby("entity")["group_id"].unique()
 gtab = full.groupby("group_id").agg(
     pii_maj=("pii", lambda s: int(s.mean() >= 0.5)),
+    ent_maj=("entity", lambda s: s.value_counts().index[0]),
     n=("pii", "size")).reset_index()
-gtr, gva = train_test_split(gtab, test_size=TEST_SIZE, random_state=SEED,
-                            stratify=gtab["pii_maj"])
+rng = np.random.RandomState(SEED)
+forced_va, forced_tr, single = set(), set(), []
+for ent, gs in gent.items():
+    gs = sorted(set(gs))
+    if len(gs) >= 2:
+        forced_va.add(gs[rng.randint(len(gs))])
+    else:
+        forced_tr.update(gs)  # 1 grupo: siempre a train, nunca a holdout
+        single.append(ent)
+if single:
+    print(f"entidades de 1 grupo (solo train, no evaluables en holdout): {single}")
+pool = gtab[~gtab["group_id"].isin(forced_va | forced_tr)].reset_index(drop=True)
+target_va_n = int(round(len(gtab) * TEST_SIZE))
+test_size_pool = max(0.01, min(0.9, (target_va_n - len(forced_va)) / max(len(pool), 1)))
+gtr_pool, gva_pool = train_test_split(
+    pool, test_size=test_size_pool, random_state=SEED, stratify=pool["pii_maj"])
+gtr = pd.concat([gtr_pool, gtab[gtab["group_id"].isin(forced_tr)]])
+gva = pd.concat([gva_pool, gtab[gtab["group_id"].isin(forced_va)]])
+gtr, gva = gtr.reset_index(drop=True), gva.reset_index(drop=True)
 tr_mask = full["group_id"].isin(set(gtr["group_id"])).values
 assert not (set(gtr["group_id"]) & set(gva["group_id"])), "solape de grupos"
 full["split"] = np.where(tr_mask, "train", "holdout")
