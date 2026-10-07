@@ -58,6 +58,11 @@ def _softmax(scores):
 THRESHOLD = 0.667  # fijo en codigo (decision; ignora el JSON)
 PISO_RESCATE = 0.15  # solo nivel FUZZY rescata si PISO <= prob < THRESHOLD + keyword
 UMBRAL_FALLBACK = 0.50
+# Probabilidades logicas para rescates: ML primero, regex despues.
+# No se expone origen: solo pii/prob_pii/entity/prob_entity. El motivo
+# queda solo en log servidor.
+PROB_REGLA = {"exacto": 0.85, "raro": 0.78, "fuzzy": 0.70}
+PROB_ENT_REGLA = 0.80
 # Nivel 1 y 2 fuerzan PII sin importar prob (incluso 0.00): son listas
 # cerradas de alta precision, no heuristica abierta. No generan FP fuera
 # de estas keys porque exigen match exacto o abreviatura rara + antis.
@@ -184,8 +189,8 @@ _REGLAS_RESCATE = [
     ("bienes_patrimonio", ("inmueble", "patrimonio", "hipoteca", "avaluo",
                            "predial", "vehiculo", "numautos", "car dlr",
                            "cardlr"), ()),
-    ("telefono", ("telefono", "tel_casa", "tel_oficina", "cel", "phone"), ()),
     ("tarjeta", ("tarjeta", "plastico", "card", "crd"), ()),
+    ("telefono", ("telefono", "tel_casa", "tel_oficina", "cel", "phone"), ()),
     ("cuenta", ("cuenta", "cuentabasica", "cta", "ctogru", "ordenante",
                  "account"), ()),
     ("nomina", ("nomina", "nominamaker"), ()),
@@ -308,10 +313,9 @@ def predict_columns(rows):
     num = np.vstack([feats[c] for c in ARTS["num_cols"]]).T
     X = _check_width_bin(hstack([Xn, csr_matrix(num)]).tocsr(), ARTS["clf"])
     prob = np.asarray(ARTS["clf"].predict(X)).ravel()
+    # ML primero: pii_ml sin tocar. Regex solo si ML dice NO.
     pii = prob >= ARTS["threshold"]
-    # FINAL v5: decision en 4 niveles (prob original intacta para auditoria).
-    # N1 exacto y N2 raro fuerzan aunque prob ~ 0 (cierra direccion 0.00%,
-    # soeid 3.17%, numautos 5.36%). N4 fuzzy mantiene PISO para no crear FP.
+    prob_final = np.asarray(prob, dtype=float).copy()
     keys_list = [_corrige_typo(k) for k in key.fillna("").tolist()]
     prior_ent = [None] * len(base)
     motivo = ["modelo" if p else "" for p in pii]
@@ -326,11 +330,13 @@ def predict_columns(rows):
             prior_ent[i] = _rescate_regex(k) or _fallback_regla(
                 k, ARTS["j_clases"])
             motivo[i] = "exacto"
+            prob_final[i] = max(float(pr), PROB_REGLA["exacto"])
             c_exact += 1
         elif _raro_fuerza(k) is not None:
             pii[i] = True
             prior_ent[i] = _raro_fuerza(k)
             motivo[i] = "raro"
+            prob_final[i] = max(float(pr), PROB_REGLA["raro"])
             c_raro += 1
         elif PISO_RESCATE <= float(pr) < ARTS["threshold"]:
             r = _rescate_regex(k)
@@ -338,6 +344,7 @@ def predict_columns(rows):
                 pii[i] = True
                 prior_ent[i] = r
                 motivo[i] = "fuzzy"
+                prob_final[i] = max(float(pr), PROB_REGLA["fuzzy"])
                 c_fuzzy += 1
     print(f"[binario-v5] thr={ARTS['threshold']} piso={PISO_RESCATE} "
           f"pii_modelo={int((prob >= ARTS['threshold']).sum())} "
@@ -359,17 +366,24 @@ def predict_columns(rows):
         for j, (k, i, v) in enumerate(zip(sel, idx, sj.max(axis=1))):
             e = ARTS["j_clases"][int(i)]
             p = round(float(v), 4)
-            # Si el juez duda (<0.50), el prior de rescate manda.
-            # Corrige fecha_vencimiento 22.28% y similares sin ocultar prob.
-            if p < UMBRAL_FALLBACK:
+            mot = motivo[int(k)]
+            pr = prior_ent[int(k)]
+            valid = ARTS["j_clases"] or []
+            # Prioridad a regla exacta/raro: tarjeta siempre tarjeta,
+            # aunque el juez diga telefono 82%. Sin exponer origen.
+            if mot in ("exacto", "raro") and pr is not None and pr in valid:
+                e = pr
+                p = round(max(float(v), PROB_ENT_REGLA), 4)
+            elif p < UMBRAL_FALLBACK:
                 fb = _fallback_regla(keys[j], ARTS["j_clases"])
-                pr = prior_ent[int(k)]
-                if pr is not None and pr in (ARTS["j_clases"] or []):
+                if pr is not None and pr in valid:
                     e = pr
+                    p = round(max(float(v), PROB_ENT_REGLA), 4)
                 elif fb is not None and fb != e:
                     e = fb
             ent[int(k)] = e
             eprob[int(k)] = p
+    # Salida: solo pii/prob_pii/entity/prob_entity (origen solo en log).
     return [{
         "source_file": r["source_file"],
         "name": r["name"],
@@ -377,7 +391,7 @@ def predict_columns(rows):
         "pii_probability": round(float(pr), 4),
         "entity": e,
         "entity_probability": ep,
-    } for r, p, pr, e, ep in zip(rows, pii, prob, ent, eprob)]
+    } for r, p, pr, e, ep in zip(rows, pii, prob_final, ent, eprob)]
 
 
 @app.route('/process_table', methods=['POST'])
