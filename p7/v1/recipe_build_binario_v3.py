@@ -17,7 +17,10 @@ from sklearn.model_selection import train_test_split
 
 TEST_SIZE = 0.18
 SEED = 0
-GATE_ENTITIES = ["correo", "direccion", "fecha_vencimiento", "apellido"]
+GATE_ENTITIES = ["correo", "direccion", "fecha_vencimiento", "apellido",
+                 "credenciales_id", "bienes_patrimonio", "otro_pii"]
+# FINAL v5: antes solo 4 habituales -> ciego a soeid/numautos/aper cte016.
+# credenciales_id cubre soeid, bienes cubre numautos, otro_pii cubre aper cte016.
 
 
 def _light(s):

@@ -32,7 +32,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 THR = 0.75
 SEED = 0
 NUM_COLS = ["longitud", "n_tokens", "tiene_sufijo"]
-GATE = ["correo", "direccion", "fecha_vencimiento", "apellido"]
+GATE = ["correo", "direccion", "fecha_vencimiento", "apellido",
+        "credenciales_id", "bienes_patrimonio", "otro_pii"]
+# FINAL v5: gate ampliado 4->7 para no repetir regresion soeid/numautos.
 
 tr = dataiku.Dataset("binario_train_v3").get_dataframe().reset_index(drop=True)
 va = dataiku.Dataset("binario_holdout_v3").get_dataframe().reset_index(drop=True)

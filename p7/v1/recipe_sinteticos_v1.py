@@ -17,10 +17,13 @@ TOPE_FRACCION = 0.30
 MODS = ["", "1", "2", " cliente", " cte", "_1", "_2"]
 
 # termino -> se genera tal cual x formatos (bare, pegado, guion_bajo, +dijito)
-LEXICO_V1 = {
-    "direccion": ["direccion", "address", "colonia", "municipio", "alcaldia",
-                  "entidad_federativa", "codigo_postal", "calle",
-                  "numero_exterior", "numero_interior"],
+LEXICO_V1_FINAL = LEXICO_V1 = {
+    # FINAL v5: se agregan slang 267k + raras perdidas (numautos, car dlr,
+    # soeid ya estaba, addr, crd/acct). Sin esto el binario pierde soeid/numautos.
+    "direccion": ["direccion", "address", "addr", "addr_line_1", "colonia",
+                  "municipio", "alcaldia", "entidad_federativa",
+                  "codigo_postal", "calle", "numero_exterior",
+                  "numero_interior", "poblacion", "nomcol", "cntry", "city"],
     "correo": ["correo", "email", "mail", "correo_personal", "correo_trabajo"],
     "fecha_nacimiento": ["fecha_nacimiento", "nacim", "fnac", "fnacim",
                          "birth_date", "dob", "dia_nacimiento",
@@ -31,10 +34,10 @@ LEXICO_V1 = {
                  "telefono_oficina", "telefono_movil", "extension"],
     "cliente": ["cliente", "cust", "customer", "client", "num_cliente",
                 "id_cliente", "borrower"],
-    "cuenta": ["cuenta", "cta", "account", "num_cuenta", "cuenta_cheques",
-               "cuenta_eje"],
-    "tarjeta": ["tarjeta", "plastico", "card", "num_tarjeta",
-                "tarjeta_credito", "tarjeta_debito"],
+    "cuenta": ["cuenta", "cta", "acct", "acct_nbr", "account", "num_cuenta",
+               "cuenta_cheques", "cuenta_eje"],
+    "tarjeta": ["tarjeta", "plastico", "card", "crd", "crd_acct_nbr",
+                "num_tarjeta", "tarjeta_credito", "tarjeta_debito"],
     "contrato": ["contrato", "contract", "num_contrato", "contrato_credito"],
     "credito": ["credito", "credit", "loan", "num_credito", "monto_credito",
                 "plazo_credito"],
@@ -49,15 +52,18 @@ LEXICO_V1 = {
                "segundo_nombre", "nombre_cliente", "razon_social"],
     "sexo": ["sexo", "genero", "gender"],
     "datos_demograficos": ["estado_civil", "nacionalidad", "ocupacion",
-                           "escolaridad", "dependientes"],
-    "documento_legal": ["acta", "escritura", "poder_notarial", "notaria",
-                        "amparo", "demanda", "ine", "pasaporte", "licencia",
-                        "cedula_prof", "cartilla"],
+                           "escolaridad", "dependientes", "numdepend",
+                           "num_dependientes"],
+    "documento_legal": ["acta", "actacons", "escritura", "poder_notarial",
+                        "notaria", "amparo", "demanda", "ine", "pasaporte",
+                        "licencia", "cedula_prof", "cartilla", "creactecto"],
     "credenciales_id": ["password", "token", "login", "auth", "soeid", "geid",
                         "firma_electronica", "efirma", "api_key"],
     "bienes_patrimonio": ["inmueble", "patrimonio", "hipoteca", "avaluo",
                           "predial", "vehiculo", "propiedad", "garantia",
-                          "colateral"],
+                          "colateral", "numautos", "num_autos", "car_dlr",
+                          "car_dlrn"],
+    "otro_pii_canonical": [],  # placeholder: aper cte016 va a otro_pii solo via match90/pool, no sintetico
     "fecha_vencimiento": ["fecha_vencimiento", "vencimiento", "vigencia",
                           "expiry", "fecha_venc_tarjeta", "fecha_expiracion"],
     # otro_pii: sin lexico (solo cuarentena, no se sintetiza)

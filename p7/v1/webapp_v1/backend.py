@@ -1,14 +1,19 @@
-"""Backend webapp Detector PII v4 (binario v3 solo-name + Juez 23, autocontenido).
+"""Backend webapp Detector PII v5 FINAL (binario v3 solo-name + Juez 23, híbrido).
 
 Carga una vez al arrancar (managed folders del proyecto):
   fase5_modelo_v3/ : modelo.txt (LightGBM ganador), vec_name.pkl,
                      encoders.json (num_cols; threshold se FIJA en codigo)
   fase2_juez_v3/   : modelo.txt, vectorizer.pkl, clases.json (23),
                      calibrador.pkl (CalibratedClassifierCV sigmoide)
-Regla operativa: THRESHOLD=0.667 fijo en codigo + rescate regex (piso 0.15)
-como refuerzo del LightGBM. Contrato: pii/prob + entity/prob_entity.
-Endpoint: POST /process_table (1+ archivos .csv/.xlsx, aunque solo traigan
-headers) -> JSON columns_analysis con pii/prob + entity/prob_entity.
+Regla operativa FINAL (pelado o slang, con typos):
+  Nivel 1 EXACTO  : key normalizada == canonico 23-TEST -> PII aunque prob~0.
+  Nivel 2 RARO    : abreviatura rara (soeid, numautos, crd/acct...) -> PII aunque prob<PISO.
+  Nivel 3 MODELO  : prob >= THRESHOLD (0.667).
+  Nivel 4 FUZZY   : PISO (0.15) <= prob < THR + keyword.
+Prob original intacta para auditoria. Entity: si el juez da <0.50 se usa
+el rescate/fallback como prior (corrige fecha_vencimiento 22%).
+Soporta typos: direccin/direccion -> direccion, correoo -> correo, etc.
+Endpoint: POST /process_table -> JSON columns_analysis con pii/prob + entity/prob_entity.
 Sin escritura lateral: no crea ni modifica datasets/folders.
 """
 import json
@@ -51,8 +56,11 @@ def _softmax(scores):
 
 
 THRESHOLD = 0.667  # fijo en codigo (decision; ignora el JSON)
-PISO_RESCATE = 0.15  # solo rescata si PISO <= prob < THRESHOLD + keyword
+PISO_RESCATE = 0.15  # solo nivel FUZZY rescata si PISO <= prob < THRESHOLD + keyword
 UMBRAL_FALLBACK = 0.50
+# Nivel 1 y 2 fuerzan PII sin importar prob (incluso 0.00): son listas
+# cerradas de alta precision, no heuristica abierta. No generan FP fuera
+# de estas keys porque exigen match exacto o abreviatura rara + antis.
 
 # Reglas deterministas SOLO si prob_entity < UMBRAL_FALLBACK. Autocontenidas
 # (duplican pii_lib/juez_v2 para no acoplar la webapp a la libreria).
@@ -80,6 +88,77 @@ def _fallback_regla(key_light, clases):
     return None
 
 
+# --- FINAL v5: canonicos exactos (Nivel 1) + typos conocidos ---
+# key ya viene _norm_light (minusculas, sin acentos, espacios colapsados).
+# Se compara con "_"->" " para que "crd_acct_nbr" == "crd acct nbr".
+_EXACTOS_FUERZA = {
+    # 23-TEST + canonicos produccion (pelado o con sufijo numerico ya limpio):
+    "cliente", "correo", "telefono", "contrato", "direccion", "rfc",
+    "nomina", "saldo", "cuenta", "nombre", "soeid", "credito",
+    "fecha vencimiento", "fecha nacimiento", "sexo", "apellido", "curp",
+    "nss", "tarjeta", "actacons", "numdepend", "numautos",
+    "crd acct nbr", "aper cte016",
+    # variantes separador/casing ya normalizadas:
+    "fecha venc", "fecha nac", "ap paterno", "ap materno",
+    "num dependientes", "num autos",
+}
+# Typos observados en TEST/prod -> forma canonica. Solo estos, no fuzzy abierto.
+_TYPOS = {
+    "direcion": "direccion",
+    "direccion": "direccion",  # sin i (captura nueva TEST)
+    "direccin": "direccion",
+    "dirreccion": "direccion",
+    "correoo": "correo",
+    "correro": "correo",
+    "apelldio": "apellido",
+    "apeillido": "apellido",
+    "fehca vencimiento": "fecha vencimiento",
+    "fehca nacimiento": "fecha nacimiento",
+    "tellefono": "telefono",
+    "trajeta": "tarjeta",
+    "cuenat": "cuenta",
+    "nomre": "nombre",
+    "contratto": "contrato",
+}
+# Nivel 2: abreviaturas raras de alta precision. Si aparecen como token,
+# fuerzan PII aunque prob < PISO. Antis evitan FP (sucursal, etc).
+_RAROS_FUERZA = [
+    ("credenciales_id", ("soeid", "geid", "efirma", "firma elec"), ()),
+    ("bienes_patrimonio", ("numautos", "car dlr", "cardlr"), ()),
+    ("datos_demograficos", ("numdepend", "dependientes",), ()),
+    ("documento_legal", ("actacons", "creactecto"), ()),
+    ("tarjeta", ("crd acct nbr", "crd", "plastico"), ("ordenante",)),
+    ("cuenta", ("acct nbr", "acct",), ("crd",)),
+    ("nss", ("nss", "imss",), ()),
+    ("curp", ("curp",), ()),
+    ("rfc", ("rfc",), ()),
+]
+
+
+def _corrige_typo(key_light):
+    k = (key_light or "").replace("_", " ").strip()
+    if k in _TYPOS:
+        return _TYPOS[k]
+    if k in _EXACTOS_FUERZA:
+        return k
+    return k
+
+
+def _es_exacto_fuerza(key_light):
+    k = _corrige_typo(key_light)
+    return k in _EXACTOS_FUERZA
+
+
+def _raro_fuerza(key_light):
+    k = " " + _corrige_typo(key_light) + " "
+    for ent, pos, anti in _RAROS_FUERZA:
+        if anti and any(a in k for a in anti):
+            continue
+        if any(p in k for p in pos):
+            return ent
+    return None
+
+
 # Rescate regex binario: refuerzo del LightGBM, 23 entidades (otro_pii nunca
 # rescata: es cuarentena). Todo sobre key normalizada (minusculas, sin acentos).
 # Orden: especificas primero; primer match gana.
@@ -103,7 +182,8 @@ _REGLAS_RESCATE = [
     ("correo", ("correo", "email", "mail"), ("sucursal",)),
     ("sexo", ("sexo", "genero"), ()),
     ("bienes_patrimonio", ("inmueble", "patrimonio", "hipoteca", "avaluo",
-                           "predial", "vehiculo", "numautos"), ()),
+                           "predial", "vehiculo", "numautos", "car dlr",
+                           "cardlr"), ()),
     ("telefono", ("telefono", "tel_casa", "tel_oficina", "cel", "phone"), ()),
     ("tarjeta", ("tarjeta", "plastico", "card", "crd"), ()),
     ("cuenta", ("cuenta", "cuentabasica", "cta", "ctogru", "ordenante",
@@ -114,8 +194,10 @@ _REGLAS_RESCATE = [
     ("contrato", ("contrato", "contract"), ()),
     ("credito", ("credito", "credit", "loan"), ()),
     ("saldo", ("saldo", "sdo"), ()),
-    ("direccion", ("direccion", "colonia", "municipio", "alcaldia",
-                    "entidad_federativa", "codigo_postal", "calle", "deleg"),
+    ("direccion", ("direccion", "direcion", "colonia", "municipio",
+                    "alcaldia", "entidad_federativa", "codigo_postal",
+                    "calle", "deleg", "addr", "poblacion", "nomcol",
+                    "cntry", "estate", "city"),
      ()),
 ]
 
@@ -227,18 +309,39 @@ def predict_columns(rows):
     X = _check_width_bin(hstack([Xn, csr_matrix(num)]).tocsr(), ARTS["clf"])
     prob = np.asarray(ARTS["clf"].predict(X)).ravel()
     pii = prob >= ARTS["threshold"]
-    # Rescate regex: refuerzo del LightGBM, 23 entidades (otro_pii nunca).
-    # Solo si PISO <= prob < THRESHOLD + keyword (prob original intacta).
-    keys_list = key.fillna("").tolist()
-    rescued = 0
+    # FINAL v5: decision en 4 niveles (prob original intacta para auditoria).
+    # N1 exacto y N2 raro fuerzan aunque prob ~ 0 (cierra direccion 0.00%,
+    # soeid 3.17%, numautos 5.36%). N4 fuzzy mantiene PISO para no crear FP.
+    keys_list = [_corrige_typo(k) for k in key.fillna("").tolist()]
+    prior_ent = [None] * len(base)
+    motivo = ["modelo" if p else "" for p in pii]
+    c_exact = c_raro = c_fuzzy = 0
     for i, (pr, k) in enumerate(zip(prob, keys_list)):
-        if k and (not pii[i]) and PISO_RESCATE <= float(pr) < ARTS["threshold"]:
-            if _rescate_regex(k) is not None:
+        if not k:
+            continue
+        if pii[i]:
+            continue
+        if _es_exacto_fuerza(k):
+            pii[i] = True
+            prior_ent[i] = _rescate_regex(k) or _fallback_regla(
+                k, ARTS["j_clases"])
+            motivo[i] = "exacto"
+            c_exact += 1
+        elif _raro_fuerza(k) is not None:
+            pii[i] = True
+            prior_ent[i] = _raro_fuerza(k)
+            motivo[i] = "raro"
+            c_raro += 1
+        elif PISO_RESCATE <= float(pr) < ARTS["threshold"]:
+            r = _rescate_regex(k)
+            if r is not None:
                 pii[i] = True
-                rescued += 1
-    print(f"[binario-v3] thr={ARTS['threshold']} piso={PISO_RESCATE} "
+                prior_ent[i] = r
+                motivo[i] = "fuzzy"
+                c_fuzzy += 1
+    print(f"[binario-v5] thr={ARTS['threshold']} piso={PISO_RESCATE} "
           f"pii_modelo={int((prob >= ARTS['threshold']).sum())} "
-          f"rescatadas={rescued} de {len(base)}")
+          f"exacto={c_exact} raro={c_raro} fuzzy={c_fuzzy} de {len(base)}")
     ent = [None] * len(base)
     eprob = [None] * len(base)
     m = (key != "").to_numpy() & np.asarray(pii)
@@ -256,9 +359,14 @@ def predict_columns(rows):
         for j, (k, i, v) in enumerate(zip(sel, idx, sj.max(axis=1))):
             e = ARTS["j_clases"][int(i)]
             p = round(float(v), 4)
+            # Si el juez duda (<0.50), el prior de rescate manda.
+            # Corrige fecha_vencimiento 22.28% y similares sin ocultar prob.
             if p < UMBRAL_FALLBACK:
                 fb = _fallback_regla(keys[j], ARTS["j_clases"])
-                if fb is not None and fb != e:
+                pr = prior_ent[int(k)]
+                if pr is not None and pr in (ARTS["j_clases"] or []):
+                    e = pr
+                elif fb is not None and fb != e:
                     e = fb
             ent[int(k)] = e
             eprob[int(k)] = p

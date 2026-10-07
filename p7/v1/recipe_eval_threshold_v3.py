@@ -19,7 +19,8 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 
 THRS = [0.05, 0.08, 0.10, 0.13, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.75, 0.90]
 NUM_COLS = ["longitud", "n_tokens", "tiene_sufijo"]
-GATE = ["correo", "direccion", "fecha_vencimiento", "apellido"]
+GATE = ["correo", "direccion", "fecha_vencimiento", "apellido",
+        "credenciales_id", "bienes_patrimonio", "otro_pii"]
 
 fdir = dataiku.Folder("fase5_modelo_v3").get_path()
 with open(os.path.join(fdir, "vec_name.pkl"), "rb") as f:
