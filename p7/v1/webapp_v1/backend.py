@@ -1,15 +1,16 @@
 """
-Backend webapp Detector PII v5 FINAL (binario v3 solo-name + Juez 23, híbrido optimizado).
+Backend webapp Detector PII v5.1 OPTIMIZADO (ServiceNow + Juez 23 clases).
 
 Carga una vez al arrancar desde las carpetas gestionadas en Dataiku:
   fase5_modelo_v3/ : modelo.txt (LightGBM), vec_name.pkl, encoders.json
   fase2_juez_v3/   : modelo.txt, vectorizer.pkl, clases.json (23), calibrador.pkl
 
 Jerarquía de Decisión:
-  Nivel 1 EXACTO  : Coincidencia directa en lista canónica -> PII forzado.
-  Nivel 2 RARO    : Abreviaturas bancarias y slang corporativo -> PII forzado.
-  Nivel 3 MODELO  : Probabilidad estadística del modelo ML >= THRESHOLD (0.667).
-  Nivel 4 FUZZY   : PISO (0.15) <= prob < THRESHOLD + keyword de rescate.
+  Nivel 0 EXCLUSIÓN: Filtro de metadatos de sistema (evita falsos positivos como 'number').
+  Nivel 1 EXACTO   : Coincidencia directa en lista canónica/roles -> PII forzado.
+  Nivel 2 RARO     : Abreviaturas bancarias, roles ServiceNow y slang -> PII forzado.
+  Nivel 3 MODELO   : Probabilidad estadística del modelo ML >= THRESHOLD (0.667).
+  Nivel 4 FUZZY    : PISO (0.15) <= prob < THRESHOLD + keyword de rescate.
 """
 
 import json
@@ -27,7 +28,7 @@ from scipy.sparse import csr_matrix, hstack
 
 _LOAD_ERROR = None
 
-# --- Funciones Auxiliares de Normalización ---
+# --- Funciones Auxiliares de Normalización y Sanitización ---
 
 def _strip_accents(s):
     return "".join(
@@ -35,13 +36,29 @@ def _strip_accents(s):
         if unicodedata.category(c) != "Mn"
     )
 
-def _norm_light(s):
+def _clean_string(s):
     if pd.isna(s):
         return ""
-    return re.sub(r"\s+", " ", _strip_accents(str(s).lower())).strip()
+    # Elimina caracteres especiales de formato como '*', '?', '#', etc.
+    s_clean = re.sub(r"[^\w\s\.]", " ", str(s))
+    return re.sub(r"\s+", " ", _strip_accents(s_clean).lower()).strip()
+
+def _get_key_variants(s):
+    """
+    Normaliza y genera variantes para campos anidados con puntos (ServiceNow dot-walking):
+    Ejemplo: 'assignment_group.manager.manager' ->
+      full_key: 'assignment group manager manager'
+      last_token: 'manager'
+    """
+    raw_clean = _clean_string(s)
+    parts = [p.strip() for p in raw_clean.split(".") if p.strip()]
+    full_key = " ".join(parts) if parts else raw_clean
+    last_token = parts[-1] if parts else raw_clean
+    return full_key, last_token
 
 def _name_norm(s):
-    return re.sub(r"\s*\d+$", "", _norm_light(s)).strip()
+    full_key, _ = _get_key_variants(s)
+    return re.sub(r"\s*\d+$", "", full_key).strip()
 
 def _softmax(scores):
     scores = np.asarray(scores, dtype=float)
@@ -55,11 +72,27 @@ def _softmax(scores):
 # --- Configuración de Umbrales y Probabilidades ---
 
 THRESHOLD = 0.667       # Umbral binario PII principal
-PISO_RESCATE = 0.15    # Umbral mínimo para activar rescate fuzzy
+PISO_RESCATE = 0.15     # Umbral mínimo para activar rescate fuzzy
 UMBRAL_FALLBACK = 0.50  # Si la certidumbre del Juez es baja (<0.50), interviene la regla
 
 PROB_REGLA = {"exacto": 0.95, "raro": 0.90, "fuzzy": 0.80}
 PROB_ENT_REGLA = 0.90
+
+# --- Filtros de Exclusión (Evita Falsos Positivos en Metadata de Sistema) ---
+
+EXCLUSIONES_SISTEMA = {
+    "number", "inc_number", "ticket_number", "sys_id", "active",
+    "sys_updated_on", "sys_created_on", "u_schedule", "type",
+    "u_business_group", "u_parent_persona", "parent", "description",
+    "short_description", "state", "priority", "urgency", "impact"
+}
+
+def _es_exclusion_sistema(full_key, last_token):
+    # Si es exactamente un campo de sistema y no contiene explicito 'user_name' o 'manager'
+    if last_token in EXCLUSIONES_SISTEMA or full_key in EXCLUSIONES_SISTEMA:
+        if not any(k in full_key for k in ("user_name", "manager", "head", "caller", "assigned")):
+            return True
+    return False
 
 # --- Mapeos y Reglas Deterministas ---
 
@@ -75,6 +108,9 @@ _REGLAS_FALLBACK = [
     ("tarjeta", ("tarjeta", "plastico", "card", "crd")),
     ("cuenta", ("cuenta", "acct", "cta", "ctogru", "aper cte", "aper_cte")),
     ("cliente", ("cliente", "cust", "clnt", "borrower")),
+    ("nombre", ("nombre", "manager", "head", "lead", "owner", "assigned_to", "caller")),
+    ("credenciales_id", ("soeid", "geid", "user_name", "username")),
+    ("direccion", ("direccion", "city", "location", "zip", "address")),
 ]
 
 def _fallback_regla(key_light, clases):
@@ -94,6 +130,11 @@ _EXACTOS_FUERZA = {
     "crd acct nbr", "aper cte016", "aper cte", "apertura cuenta",
     "fecha venc", "fecha nac", "ap paterno", "ap materno",
     "num dependientes", "num autos",
+    # Roles Corporativos y Campos Frecuentes ServiceNow
+    "manager", "head", "lead", "owner", "assigned to", "caller", "caller id",
+    "user name", "geid", "sys created by", "city", "location",
+    "u support head", "u support manager", "u secondary manager",
+    "managing business owner", "it lead", "business owner"
 }
 
 _TYPOS = {
@@ -114,7 +155,9 @@ _TYPOS = {
 }
 
 _RAROS_FUERZA = [
-    ("credenciales_id", ("soeid", "geid", "efirma", "firma elec"), ()),
+    ("credenciales_id", ("soeid", "geid", "user_name", "username", "efirma", "firma elec", "sys_created_by"), ()),
+    ("nombre", ("manager", "head", "lead", "owner", "assigned_to", "caller", "caller_id", "u_support_head", "u_support_manager", "u_secondary_manager", "it lead", "business owner"), ()),
+    ("direccion", ("city", "location", "building", "zip code"), ()),
     ("bienes_patrimonio", ("numautos", "car dlr", "cardlr"), ()),
     ("datos_demograficos", ("numdepend", "dependientes"), ()),
     ("documento_legal", ("actacons", "creactecto"), ()),
@@ -129,16 +172,15 @@ def _corrige_typo(key_light):
     k = (key_light or "").replace("_", " ").strip()
     if k in _TYPOS:
         return _TYPOS[k]
-    if k in _EXACTOS_FUERZA:
-        return k
     return k
 
-def _es_exacto_fuerza(key_light):
-    k = _corrige_typo(key_light)
-    return k in _EXACTOS_FUERZA
+def _es_exacto_fuerza(full_key, last_token):
+    fk = _corrige_typo(full_key)
+    lt = _corrige_typo(last_token)
+    return fk in _EXACTOS_FUERZA or lt in _EXACTOS_FUERZA
 
-def _raro_fuerza(key_light):
-    k = " " + _corrige_typo(key_light) + " "
+def _raro_fuerza(full_key, last_token):
+    k = f" {_corrige_typo(full_key)} {_corrige_typo(last_token)} "
     for ent, pos, anti in _RAROS_FUERZA:
         if anti and any(a in k for a in anti):
             continue
@@ -156,14 +198,15 @@ _REGLAS_RESCATE = [
      ("venc", "expira", "expiry", "vigencia", "ordenante")),
     ("fecha_vencimiento", ("venc", "expira", "expiry", "vigencia", "f_venc"),
      ("nacim", "fnac", "birth")),
-    ("credenciales_id", ("soeid", "geid", "password", "passwd", "pwd", "token",
-                         "login", "credencial", "firma_elec", "efirma"), ()),
+    ("credenciales_id", ("soeid", "geid", "user_name", "username", "sys_created_by",
+                         "password", "passwd", "pwd", "token", "login", "credencial",
+                         "firma_elec", "efirma"), ()),
     ("documento_legal", ("acta", "actacons", "escritura", "poder_notarial",
                          "amparo", "demanda", "pasaporte", "licencia",
                          "cedula", "cartilla"), ()),
     ("datos_demograficos", ("numdepend", "dependientes", "ocupacion",
                             "estado_civil", "nacionalidad", "demograf"), ()),
-    ("correo", ("correo", "email", "mail"), ("sucursal",)),
+    ("correo", ("correo", "email", "mail", "distribucion"), ("sucursal",)),
     ("sexo", ("sexo", "genero"), ()),
     ("bienes_patrimonio", ("inmueble", "patrimonio", "hipoteca", "avaluo",
                            "predial", "vehiculo", "numautos", "car dlr",
@@ -173,7 +216,10 @@ _REGLAS_RESCATE = [
     ("cuenta", ("cuenta", "cuentabasica", "cta", "ctogru", "ordenante",
                  "account", "aper cte", "aper_cte"), ()),
     ("nomina", ("nomina", "nominamaker"), ()),
-    ("nombre", ("nombre",), ("nomina", "nominamaker")),
+    ("nombre", ("nombre", "manager", "head", "lead", "owner", "assigned_to",
+                "caller", "caller_id", "u_support_head", "u_support_manager",
+                "u_secondary_manager", "secondary_manager", "business_owner",
+                "it_lead"), ("nomina", "nominamaker")),
     ("cliente", ("cliente", "cust", "clnt", "borrower"), ()),
     ("contrato", ("contrato", "contract"), ()),
     ("credito", ("credito", "credit", "loan"), ()),
@@ -181,12 +227,11 @@ _REGLAS_RESCATE = [
     ("direccion", ("direccion", "direcion", "colonia", "municipio",
                     "alcaldia", "entidad_federativa", "codigo_postal",
                     "calle", "deleg", "addr", "poblacion", "nomcol",
-                    "cntry", "estate", "city"),
-     ()),
+                    "cntry", "estate", "city", "location", "zip", "building"), ()),
 ]
 
-def _rescate_regex(key_light):
-    k = " " + (key_light or "").replace("_", " ") + " "
+def _rescate_regex(full_key, last_token):
+    k = f" {(full_key or '').replace('_', ' ')} {(last_token or '').replace('_', ' ')} "
     for ent, pos, anti in _REGLAS_RESCATE:
         if anti and any(a.replace("_", " ") in k for a in anti):
             continue
@@ -276,48 +321,67 @@ def read_uploaded_file(file):
 
 def predict_columns(rows):
     base = pd.DataFrame(rows)
-    key = base["name"].map(_norm_light)
+    
+    # Extrae variantes limpia completa y ultimo token (para ServiceNow dot walking)
+    key_variants = [ _get_key_variants(name) for name in base["name"] ]
+    full_keys = [ kv[0] for kv in key_variants ]
+    last_tokens = [ kv[1] for kv in key_variants ]
+    
+    key_series = pd.Series(full_keys)
     norms = base["name"].map(_name_norm)
 
     feats = {
         "longitud": base["name"].fillna("").astype(str).str.len().values,
         "n_tokens": norms.str.split().str.len().fillna(0).astype(int).values,
-        "tiene_sufijo": key.str.contains(r"\d+$", regex=True).astype(int).values,
+        "tiene_sufijo": key_series.str.contains(r"\d+$", regex=True).astype(int).values,
     }
 
-    Xn = ARTS["vec_name"].transform(key.fillna("").tolist())
+    Xn = ARTS["vec_name"].transform(key_series.fillna("").tolist())
     num = np.vstack([feats[c] for c in ARTS["num_cols"]]).T
     X = _check_width_bin(hstack([Xn, csr_matrix(num)]).tocsr(), ARTS["clf"])
 
     prob = np.asarray(ARTS["clf"].predict(X)).ravel()
     pii = prob >= ARTS["threshold"]
     prob_final = np.asarray(prob, dtype=float).copy()
-    keys_list = [_corrige_typo(k) for k in key.fillna("").tolist()]
     prior_ent = [None] * len(base)
     motivo = ["modelo" if p else "" for p in pii]
 
     c_exact = c_raro = c_fuzzy = 0
 
-    # Rescate por Reglas (Capas 1, 2 y 4)
-    for i, (pr, k) in enumerate(zip(prob, keys_list)):
-        if not k:
+    # Evaluación y Rescate por Reglas (Capas 0, 1, 2 y 4)
+    for i, (pr, fk, lt) in enumerate(zip(prob, full_keys, last_tokens)):
+        if not fk:
             continue
+            
+        # Nivel 0: Exclusión de Metadatos del Sistema (p. ej. 'number' -> NO PII)
+        if _es_exclusion_sistema(fk, lt):
+            pii[i] = False
+            prob_final[i] = 0.0000
+            motivo[i] = "exclusion_sistema"
+            continue
+
         if pii[i]:
             continue
-        if _es_exacto_fuerza(k):
+
+        # Nivel 1: Coincidencia Exacta
+        if _es_exacto_fuerza(fk, lt):
             pii[i] = True
-            prior_ent[i] = _rescate_regex(k) or _fallback_regla(k, ARTS["j_clases"])
+            prior_ent[i] = _rescate_regex(fk, lt) or _fallback_regla(fk, ARTS["j_clases"])
             motivo[i] = "exacto"
             prob_final[i] = max(float(pr), PROB_REGLA["exacto"])
             c_exact += 1
-        elif _raro_fuerza(k) is not None:
+            
+        # Nivel 2: Casos Raros o Roles Corporativos Especiales
+        elif _raro_fuerza(fk, lt) is not None:
             pii[i] = True
-            prior_ent[i] = _raro_fuerza(k)
+            prior_ent[i] = _raro_fuerza(fk, lt)
             motivo[i] = "raro"
             prob_final[i] = max(float(pr), PROB_REGLA["raro"])
             c_raro += 1
+            
+        # Nivel 4: Rescate Fuzzy
         elif PISO_RESCATE <= float(pr) < ARTS["threshold"]:
-            r = _rescate_regex(k)
+            r = _rescate_regex(fk, lt)
             if r is not None:
                 pii[i] = True
                 prior_ent[i] = r
@@ -325,18 +389,18 @@ def predict_columns(rows):
                 prob_final[i] = max(float(pr), PROB_REGLA["fuzzy"])
                 c_fuzzy += 1
 
-    print(f"[binario-v5] thr={ARTS['threshold']} piso={PISO_RESCATE} "
+    print(f"[binario-v5.1] thr={ARTS['threshold']} piso={PISO_RESCATE} "
           f"pii_modelo={int((prob >= ARTS['threshold']).sum())} "
           f"exacto={c_exact} raro={c_raro} fuzzy={c_fuzzy} de {len(base)}")
 
-    # Determinación de la Entidad (Juez)
+    # Determinación de la Entidad (Juez sobre las 23 clases)
     ent = [None] * len(base)
     eprob = [None] * len(base)
-    m = (key != "").to_numpy() & np.asarray(pii)
+    m = (key_series != "").to_numpy() & np.asarray(pii)
 
     if int(m.sum()):
         sel = np.where(m)[0]
-        keys = key.iloc[sel].tolist()
+        keys = key_series.iloc[sel].tolist()
         Xj = ARTS["j_vec"].transform(keys)
         Xj = _check_width_juez(Xj, ARTS["j_bst"])
 
@@ -357,7 +421,9 @@ def predict_columns(rows):
                 e = pr
                 p = round(max(float(v), PROB_ENT_REGLA), 4)
             elif p < UMBRAL_FALLBACK:
-                fb = _fallback_regla(keys[j], ARTS["j_clases"])
+                fk_i = full_keys[int(k)]
+                lt_i = last_tokens[int(k)]
+                fb = _rescate_regex(fk_i, lt_i) or _fallback_regla(fk_i, ARTS["j_clases"])
                 if pr is not None and pr in valid:
                     e = pr
                     p = round(max(float(v), PROB_ENT_REGLA), 4)
@@ -373,8 +439,8 @@ def predict_columns(rows):
         "name": r["name"],
         "is_pii": bool(p),
         "pii_probability": round(float(pr), 4),
-        "entity": e,
-        "entity_probability": ep,
+        "entity": e if bool(p) else None,
+        "entity_probability": ep if bool(p) else None,
     } for r, p, pr, e, ep in zip(rows, pii, prob_final, ent, eprob)]
 
 # --- Endpoint Flask ---
