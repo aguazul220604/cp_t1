@@ -1,10 +1,12 @@
 # Dataiku Python recipe: eval_matriz_operativo (SIN reentrenar)
 # Inputs (Flow): binario_holdout_v3 (congelado) + managed folder fase5_modelo_operativo
-# Outputs (Flow): mismo folder fase5_modelo_operativo (+3 archivos nuevos):
-#                 eval_operativo.html + confusion_matrix.csv + metrics.json
+# Output (Flow): managed folder fase5_modelo_operativo_metricas:
+#                eval_operativo.html + confusion_matrix.csv + metrics.json
 # NO toca modelo.txt / vec_name.pkl / encoders.json. Solo scoring post-hoc.
-# Principal: threshold operativo (encoders.json, fallback 0.667 = backend v5.1).
-# Anexo: barrido [0.05..0.90] con 0.667 marcado, para contexto negocio.
+# Soporta operativo legacy (variante A/B con type OHE + TE + desc) y v3
+# (solo-name). Holdout v3 no trae dataset/type/description -> se usan
+# defaults de produccion (te_global, OTROS, has_description=0, desc=0),
+# igual que hace la webapp en inferencia y que B_va0 en el train.
 import base64
 import io
 import json
@@ -22,10 +24,10 @@ from sklearn.metrics import (accuracy_score, confusion_matrix, f1_score,
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-THR_BACKEND = 0.667  # backend v5.1 webapp_v1/backend.py THRESHOLD
+THR_BACKEND = 0.667
 THRS_ANEXO = [0.05, 0.08, 0.10, 0.13, 0.15, 0.20, 0.25, 0.30, 0.40,
               0.50, 0.60, 0.667, 0.75, 0.90]
-NUM_COLS_DEFAULT = ["longitud", "n_tokens", "tiene_sufijo"]
+NUM_COLS_V3 = ["longitud", "n_tokens", "tiene_sufijo"]
 
 
 def f2_from_pr(prec, rec):
@@ -33,40 +35,84 @@ def f2_from_pr(prec, rec):
 
 
 # ---- artefactos operativos (solo lectura) ----
-fdir = dataiku.Folder("fase5_modelo_operativo").get_path()
-with open(os.path.join(fdir, "vec_name.pkl"), "rb") as f:
+f_in = dataiku.Folder("fase5_modelo_operativo").get_path()
+with open(os.path.join(f_in, "vec_name.pkl"), "rb") as f:
     vec = pickle.load(f)
-with open(os.path.join(fdir, "encoders.json"), encoding="utf-8") as f:
+with open(os.path.join(f_in, "encoders.json"), encoding="utf-8") as f:
     enc = json.load(f)
 
-NUM_COLS = list(enc.get("num_cols", NUM_COLS_DEFAULT))
 THR_OP = float(enc.get("threshold", THR_BACKEND))
-# Principal = operativo real; si difiere del backend, se reportan ambos.
 THR_PRINCIPAL = THR_OP
 print(f"threshold operativo encoders.json={THR_OP} | backend v5.1={THR_BACKEND}")
 
-is_lgbm = enc.get("model_type", "") == "lgbm_booster" or os.path.exists(
-    os.path.join(fdir, "modelo.txt"))
-if os.path.exists(os.path.join(fdir, "modelo.txt")):
+# Detecta mundo del operativo: legacy A/B (con top_types/TE) vs v3 (solo-name).
+variante = enc.get("variante", None)
+top_types = list(enc.get("top_types", []))
+te_map = dict(enc.get("te_map", {}) or {})
+te_global = float(enc.get("te_global", 0.0))
+num_cols_enc = list(enc.get("num_cols", []))
+is_legacy = bool(variante in ("A", "B") or len(top_types) > 0 or len(te_map) > 0)
+print(f"variante={variante} legacy={is_legacy} top_types={len(top_types)} "
+      f"num_cols_enc={num_cols_enc}")
+
+vec_desc = None
+if is_legacy and variante == "B":
+    with open(os.path.join(f_in, "vec_desc.pkl"), "rb") as f:
+        vec_desc = pickle.load(f)
+
+if os.path.exists(os.path.join(f_in, "modelo.txt")):
     import lightgbm as lgb
-    clf = lgb.Booster(model_file=os.path.join(fdir, "modelo.txt"))
+    clf = lgb.Booster(model_file=os.path.join(f_in, "modelo.txt"))
     predict = lambda X: np.asarray(clf.predict(X)).ravel()  # noqa
     esp = int(clf.num_feature())
 else:
-    with open(os.path.join(fdir, "modelo.pkl"), "rb") as f:
+    with open(os.path.join(f_in, "modelo.pkl"), "rb") as f:
         clf = pickle.load(f)
     predict = lambda X: np.asarray(clf.predict_proba(X))[:, 1]  # noqa
     esp = None
+print(f"modelo espera {esp} features")
 
-# ---- holdout congelado (no reentrenar, no modificar split) ----
+# ---- holdout congelado ----
 va = dataiku.Dataset("binario_holdout_v3").get_dataframe().reset_index(drop=True)
 yva = va["pii"].astype(int).values
-Xva = hstack([vec.transform(va["key"].fillna("").tolist()),
-              csr_matrix(va[NUM_COLS].values)]).tocsr()
-if esp is not None:
+n = len(va)
+keys = va["key"].fillna("").tolist()
+Xn = vec.transform(keys)
+
+if is_legacy:
+    # Reconstruye features legacy con defaults de produccion.
+    if "longitud" in va.columns:
+        longitud = va["longitud"].values.astype(float)
+    else:
+        longitud = va["name"].fillna("").astype(str).str.len().values.astype(float)
+    has_desc = np.zeros(n)  # holdout sin description = escenario prod enmascarado
+    te = np.full(n, te_global, dtype=float)  # dataset desconocido -> global
+    num = np.vstack([longitud, has_desc, te]).T
+    n_typ = len(top_types) + 1  # top + OTROS
+    typ = np.zeros((n, n_typ), dtype=np.int8)
+    typ[:, -1] = 1  # todo a OTROS (holdout v3 no trae type)
+    if variante == "B":
+        assert vec_desc is not None, "variante B requiere vec_desc.pkl"
+        Xd = csr_matrix((n, len(vec_desc.vocabulary_)))
+        Xva = hstack([Xn, Xd, csr_matrix(num), csr_matrix(typ)]).tocsr()
+    else:
+        Xva = hstack([Xn, csr_matrix(num), csr_matrix(typ)]).tocsr()
+else:
+    NUM_COLS = num_cols_enc if len(num_cols_enc) == 3 else NUM_COLS_V3
+    Xva = hstack([Xn, csr_matrix(va[NUM_COLS].values)]).tocsr()
+
+print(f"Xva construido {tuple(Xva.shape)} vs esperado {esp}")
+if esp is not None and Xva.shape[1] != esp:
     if Xva.shape[1] > esp:
         Xva = Xva[:, :esp]
-    assert Xva.shape[1] == esp, f"ancho holdout {Xva.shape[1]} vs modelo {esp}"
+        print(f"truncado a {tuple(Xva.shape)}")
+    else:
+        # Rellena con ceros (no deberia pasar si la rama es correcta).
+        from scipy.sparse import csr_matrix as _csr
+        pad = _csr((n, esp - Xva.shape[1]))
+        Xva = hstack([Xva, pad]).tocsr()
+        print(f"rellenado a {tuple(Xva.shape)}")
+assert esp is None or Xva.shape[1] == esp, f"ancho final {Xva.shape[1]} vs {esp}"
 p = predict(Xva)
 
 
@@ -88,22 +134,18 @@ def metricas_en_thr(thr):
     }
 
 
-# ---- principal operativo ----
 m = metricas_en_thr(THR_PRINCIPAL)
 print(f"PRINCIPAL thr={THR_PRINCIPAL}: {m}")
 cm = np.array([[m["TN"], m["FP"]], [m["FN"], m["TP"]]])
 
-# Si operativo != backend, reportar backend tambien (sin cambiar nada).
 extra = None
 if abs(THR_OP - THR_BACKEND) > 1e-9:
     extra = metricas_en_thr(THR_BACKEND)
     print(f"BACKEND thr={THR_BACKEND}: {extra}")
 
-# ---- anexo barrido ----
 rows = [metricas_en_thr(t) for t in THRS_ANEXO]
 comp = pd.DataFrame(rows)
 
-# ---- FN/FP top para negocio ----
 va_sc = va[["name", "entity"]].copy()
 va_sc["prob"] = np.round(p, 4)
 va_sc["pred"] = (p >= THR_PRINCIPAL).astype(int)
@@ -113,9 +155,8 @@ fn_top = va_sc[(va_sc["pred"] == 0) & (va_sc["real"] == 1)].sort_values(
 fp_top = va_sc[(va_sc["pred"] == 1) & (va_sc["real"] == 0)].sort_values(
     "prob", ascending=False).head(15)
 
-# ---- figura matriz ----
 fig, ax = plt.subplots(figsize=(4.5, 4))
-im = ax.imshow(cm, cmap="Blues")
+ax.imshow(cm, cmap="Blues")
 ax.set_xticks([0, 1], ["Pred NO PII", "Pred PII"])
 ax.set_yticks([0, 1], ["Real NO PII", "Real PII"])
 ax.set_title(f"Matriz confusion operativo @thr={THR_PRINCIPAL}")
@@ -129,15 +170,21 @@ fig.savefig(buf, format="png")
 plt.close(fig)
 img = base64.b64encode(buf.getvalue()).decode()
 
-# ---- salidas (solo archivos nuevos, modelo intacto) ----
+# ---- salidas: SIEMPRE al folder de OUTPUT, nunca al input ----
+try:
+    f_out = dataiku.Folder("fase5_modelo_operativo_metricas").get_path()
+except Exception:
+    f_out = f_in  # fallback local / flow antiguo con mismo folder
+print(f"escribe en: {f_out}")
 pd.DataFrame([[m["TN"], m["FP"]], [m["FN"], m["TP"]]],
              index=["Real NO_PII", "Real PII"],
              columns=["Pred NO_PII", "Pred PII"]).to_csv(
-    os.path.join(fdir, "confusion_matrix.csv"), encoding="utf-8")
-with open(os.path.join(fdir, "metrics.json"), "w", encoding="utf-8") as f:
+    os.path.join(f_out, "confusion_matrix.csv"), encoding="utf-8")
+with open(os.path.join(f_out, "metrics.json"), "w", encoding="utf-8") as f:
     json.dump({"principal": m, "backend_ref": extra,
                "barrido": rows, "threshold_operativo": THR_OP,
                "threshold_backend": THR_BACKEND,
+               "variante": variante, "legacy": is_legacy,
                "n_holdout": int(len(yva)),
                "modelo_tocado": False}, f, ensure_ascii=False, indent=2)
 
@@ -147,14 +194,20 @@ if extra is not None:
                   f"{pd.DataFrame([extra]).to_html(index=False)}"
                   "<p>El backend v5.1 usa THRESHOLD=0.667 fijo en codigo; "
                   "si encoders.json difiere, alinear en cutover manual.</p>")
+nota = ("<p>Operativo legacy A/B: holdout v3 sin dataset/type/description "
+        "se evalua con defaults de produccion "
+        "(te_global, type=OTROS, has_description=0, desc=0), "
+        "igual que B_va0 en entrenamiento y que la webapp.</p>" if is_legacy
+        else "<p>Operativo v3 solo-name: features key + longitud/n_tokens/tiene_sufijo.</p>")
 html = ("<html><head><meta charset='utf-8'>"
         "<title>Eval operativo — matriz confusion</title></head>"
         "<body style='font-family:sans-serif;max-width:1100px;margin:auto'>"
         f"<h1>Modelo operativo — matriz @thr={THR_PRINCIPAL} (SIN reentrenar)</h1>"
         f"<p>Holdout congelado: <b>{len(yva)} filas</b> "
         f"(PII={(yva == 1).sum()}, NO_PII={(yva == 0).sum()}). "
-        f"Modelo: fase5_modelo_operativo/modelo.txt + vec_name.pkl. "
+        f"Modelo: fase5_modelo_operativo/modelo.txt (variante={variante}). "
         "Este recipe solo hace scoring; no modifica el modelo.</p>"
+        f"{nota}"
         f"{pd.DataFrame([m]).to_html(index=False)}"
         f"<img src='data:image/png;base64,{img}'/>"
         f"{extra_html}"
@@ -165,7 +218,7 @@ html = ("<html><head><meta charset='utf-8'>"
         f"<h2>Anexo barrido (contexto, no cambia operativo)</h2>"
         f"{comp.to_html(index=False)}"
         "</body></html>")
-with open(os.path.join(fdir, "eval_operativo.html"), "w", encoding="utf-8") as f:
+with open(os.path.join(f_out, "eval_operativo.html"), "w", encoding="utf-8") as f:
     f.write(html)
 print("OK eval operativo -> eval_operativo.html + confusion_matrix.csv + metrics.json")
 print(f"Matriz @thr={THR_PRINCIPAL}: TN={m['TN']} FP={m['FP']} FN={m['FN']} TP={m['TP']}")
